@@ -19,8 +19,20 @@ st.set_page_config(
 )
 
 # Добавление CSS для адаптации под мобильные устройства и скрытия элементов Streamlit
-st.markdown("""
+hide_streamlit_style = """
 <style>
+    /* Скрываем стандартные элементы Streamlit */
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    header {visibility: hidden !important;}
+    .stDeployButton {display: none !important;}
+    .viewerBadge_container__1QSob {visibility: hidden !important;}
+    .styles_viewerBadge__1yB5_, .viewerBadge_link__1S137, .viewerBadge_text__1JaDK {visibility: hidden !important;}
+    div[data-testid="stToolbar"] {visibility: hidden !important;}
+    div[data-testid="stDecoration"] {visibility: hidden !important;}
+    div[data-testid="stStatusWidget"] {visibility: hidden !important;}
+    
+    /* Основные стили приложения */
     .stButton button {
         width: 100%;
         margin-bottom: 10px;
@@ -47,12 +59,6 @@ st.markdown("""
         }
     }
     
-    /* Скрываем стандартные элементы Streamlit */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stDeployButton {visibility: hidden;}
-    
     /* Стили для спрятанных настроек */
     .settings-section {
         margin-top: 30px;
@@ -60,7 +66,48 @@ st.markdown("""
         border-top: 1px solid #ddd;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# Дополнительная попытка скрыть элементы Streamlit с помощью JavaScript
+hide_streamlit_js = """
+<script>
+    // Функция для скрытия элементов
+    function hideElements() {
+        // Скрываем все элементы Streamlit
+        const elementsToHide = [
+            'header', 
+            'footer', 
+            '.stDeployButton', 
+            '#MainMenu',
+            '[data-testid="stToolbar"]',
+            '[data-testid="stDecoration"]',
+            '[data-testid="stStatusWidget"]',
+            '.viewerBadge_container__1QSob',
+            '.styles_viewerBadge__1yB5_', 
+            '.viewerBadge_link__1S137', 
+            '.viewerBadge_text__1JaDK'
+        ];
+        
+        elementsToHide.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+                if (el) {
+                    el.style.display = 'none';
+                    el.style.visibility = 'hidden';
+                }
+            });
+        });
+    }
+    
+    // Запускаем сразу и через небольшую задержку, чтобы учесть асинхронную загрузку элементов
+    hideElements();
+    setTimeout(hideElements, 500);
+    setTimeout(hideElements, 1000);
+    setTimeout(hideElements, 2000);
+</script>
+"""
+st.markdown(hide_streamlit_js, unsafe_allow_html=True)
 
 # Получение API ключей
 elevenlabs_api_key = st.secrets["ELEVENLABS_API_KEY"]
