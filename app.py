@@ -32,6 +32,15 @@ hide_streamlit_style = """
     div[data-testid="stDecoration"] {visibility: hidden !important;}
     div[data-testid="stStatusWidget"] {visibility: hidden !important;}
     
+    /* Дополнительные элементы для скрытия */
+    button[data-testid="baseButton-headerNoPadding"] {display: none !important;}
+    [data-testid="stHeader"] {display: none !important;}
+    .st-emotion-cache-h5rgaw {display: none !important;}
+    ._terminalButton_rix23_138 {display: none !important;}
+    [data-testid="manage-app-button"] {display: none !important;}
+    button.st-emotion-cache-iiif1v {display: none !important;}
+    .st-emotion-cache-18ni7ap {display: none !important;}
+    
     /* Основные стили приложения */
     .stButton button {
         width: 100%;
@@ -86,7 +95,14 @@ hide_streamlit_js = """
             '.viewerBadge_container__1QSob',
             '.styles_viewerBadge__1yB5_', 
             '.viewerBadge_link__1S137', 
-            '.viewerBadge_text__1JaDK'
+            '.viewerBadge_text__1JaDK',
+            '[data-testid="baseButton-headerNoPadding"]',
+            '[data-testid="stHeader"]',
+            '.st-emotion-cache-h5rgaw',
+            '._terminalButton_rix23_138',
+            '[data-testid="manage-app-button"]',
+            'button.st-emotion-cache-iiif1v',
+            '.st-emotion-cache-18ni7ap'
         ];
         
         elementsToHide.forEach(selector => {
@@ -95,6 +111,8 @@ hide_streamlit_js = """
                 if (el) {
                     el.style.display = 'none';
                     el.style.visibility = 'hidden';
+                    el.style.opacity = '0';
+                    el.style.pointerEvents = 'none';
                 }
             });
         });
@@ -105,6 +123,17 @@ hide_streamlit_js = """
     setTimeout(hideElements, 500);
     setTimeout(hideElements, 1000);
     setTimeout(hideElements, 2000);
+    
+    // Также добавляем обработчик на изменение DOM, чтобы скрывать вновь появляющиеся элементы
+    const observer = new MutationObserver(function(mutations) {
+        hideElements();
+    });
+    
+    // Запускаем наблюдение за изменениями в DOM
+    observer.observe(document.body, { 
+        childList: true,
+        subtree: true
+    });
 </script>
 """
 st.markdown(hide_streamlit_js, unsafe_allow_html=True)
