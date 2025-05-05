@@ -41,6 +41,21 @@ hide_streamlit_style = """
     button.st-emotion-cache-iiif1v {display: none !important;}
     .st-emotion-cache-18ni7ap {display: none !important;}
     
+    /* Скрываем бейдж Streamlit и аватар пользователя */
+    ._container_gzau3_1 {display: none !important;}
+    ._viewerBadge_nim44_23 {display: none !important;}
+    ._profileContainer_gzau3_53 {display: none !important;}
+    ._profilePreview_gzau3_63 {display: none !important;}
+    [data-testid="appCreatorAvatar"] {display: none !important;}
+    a[href*="streamlit.io/cloud"] {display: none !important;}
+    a[href*="share.streamlit.io/user"] {display: none !important;}
+    
+    /* Для всех svg внутри скрываемых элементов */
+    ._container_gzau3_1 svg, 
+    ._viewerBadge_nim44_23 svg {
+        display: none !important;
+    }
+    
     /* Основные стили приложения */
     .stButton button {
         width: 100%;
@@ -102,20 +117,46 @@ hide_streamlit_js = """
             '._terminalButton_rix23_138',
             '[data-testid="manage-app-button"]',
             'button.st-emotion-cache-iiif1v',
-            '.st-emotion-cache-18ni7ap'
+            '.st-emotion-cache-18ni7ap',
+            '._container_gzau3_1',
+            '._viewerBadge_nim44_23',
+            '._profileContainer_gzau3_53',
+            '._profilePreview_gzau3_63',
+            '[data-testid="appCreatorAvatar"]',
+            'a[href*="streamlit.io/cloud"]',
+            'a[href*="share.streamlit.io/user"]'
         ];
         
+        // Функция для полного скрытия элемента
+        function hideElement(el) {
+            if (el) {
+                el.style.display = 'none';
+                el.style.visibility = 'hidden';
+                el.style.opacity = '0';
+                el.style.pointerEvents = 'none';
+                el.style.height = '0';
+                el.style.width = '0';
+                el.style.position = 'absolute';
+                el.style.zIndex = '-9999';
+                el.style.overflow = 'hidden';
+            }
+        }
+        
+        // Применяем скрытие к каждому элементу
         elementsToHide.forEach(selector => {
             const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-                if (el) {
-                    el.style.display = 'none';
-                    el.style.visibility = 'hidden';
-                    el.style.opacity = '0';
-                    el.style.pointerEvents = 'none';
-                }
-            });
+            elements.forEach(hideElement);
         });
+        
+        // Дополнительно ищем все ссылки на streamlit
+        document.querySelectorAll('a').forEach(a => {
+            if (a.href && (a.href.includes('streamlit.io') || a.href.includes('share.streamlit'))) {
+                hideElement(a);
+            }
+        });
+        
+        // Удаляем все svg внутри нежелательных элементов
+        document.querySelectorAll('._container_gzau3_1 svg, ._viewerBadge_nim44_23 svg').forEach(hideElement);
     }
     
     // Запускаем сразу и через небольшую задержку, чтобы учесть асинхронную загрузку элементов
@@ -123,6 +164,7 @@ hide_streamlit_js = """
     setTimeout(hideElements, 500);
     setTimeout(hideElements, 1000);
     setTimeout(hideElements, 2000);
+    setTimeout(hideElements, 5000);
     
     // Также добавляем обработчик на изменение DOM, чтобы скрывать вновь появляющиеся элементы
     const observer = new MutationObserver(function(mutations) {
@@ -132,7 +174,9 @@ hide_streamlit_js = """
     // Запускаем наблюдение за изменениями в DOM
     observer.observe(document.body, { 
         childList: true,
-        subtree: true
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style', 'href']
     });
 </script>
 """
