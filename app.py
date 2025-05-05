@@ -6,9 +6,11 @@ import random
 import anthropic
 import openai
 import elevenlabs
+import unicodedata
+import base64
 from elevenlabs.client import ElevenLabs
 
-# Настройка страницы
+# Скрываем стандартные элементы Streamlit
 st.set_page_config(
     page_title="Тренажёр испанских глаголов",
     page_icon="🇪🇸",
@@ -16,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Добавление CSS для адаптации под мобильные устройства
+# Добавление CSS для адаптации под мобильные устройства и скрытия элементов Streamlit
 st.markdown("""
 <style>
     .stButton button {
@@ -44,6 +46,19 @@ st.markdown("""
             font-size: 16px;
         }
     }
+    
+    /* Скрываем стандартные элементы Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {visibility: hidden;}
+    
+    /* Стили для спрятанных настроек */
+    .settings-section {
+        margin-top: 30px;
+        padding: 10px;
+        border-top: 1px solid #ddd;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -70,6 +85,30 @@ if 'audio_ready' not in st.session_state:
     st.session_state.audio_ready = False
 if 'audio_data' not in st.session_state:
     st.session_state.audio_data = None
+if 'show_settings' not in st.session_state:
+    st.session_state.show_settings = False
+if 'selected_model' not in st.session_state:
+    st.session_state.selected_model = "claude"
+if 'selected_voice' not in st.session_state:
+    st.session_state.selected_voice = "Jhenny Antiques"
+if 'voice_id' not in st.session_state:
+    st.session_state.voice_id = "2Lb1en5ujrODDIqmp7F3"  # ID для Jhenny Antiques по умолчанию
+if 'selected_topics' not in st.session_state:
+    # По умолчанию выбраны все темы
+    st.session_state.selected_topics = {
+        'Presente': True,
+        'Pretérito indefinido (perfecto simple)': True,
+        'Pretérito imperfecto': True,
+        'Pretérito perfecto compuesto': True, 
+        'Futuro simple': True,
+        'Futuro compuesto': True,
+        'Participio': True,
+        'Gerundio': True,
+        'Pronombres': True,
+        'Paráfrasis': True
+    }
+if 'needs_new_exercise' not in st.session_state:
+    st.session_state.needs_new_exercise = False
 
 # Список времён и конструкций для тренировки
 TENSES = [
@@ -86,6 +125,10 @@ FORMS = [
     "Gerundio"
 ]
 
+PRONOUNS = [
+    "Pronombres"
+]
+
 CONSTRUCTIONS = [
     "Estar + gerundio",
     "Ir a + infinitivo",
@@ -93,9 +136,21 @@ CONSTRUCTIONS = [
     "Tener que + infinitivo",
     "Deber + infinitivo",
     "Poder + infinitivo",
-    "Volver a + infinitivo",
-    "Pronombres (притяжательные и пр.)"
+    "Volver a + infinitivo"
 ]
+
+# Словарь для групп тем
+TOPIC_GROUPS = {
+    'Paráfrasis': CONSTRUCTIONS
+}
+
+def normalize_spanish_text(text):
+    """Нормализует испанский текст: удаляет акценты и заменяет ñ на n"""
+    # Сначала заменяем ñ на n
+    text = text.replace("ñ", "n").replace("Ñ", "N")
+    # Затем удаляем все диакритические знаки (акценты)
+    return ''.join(c for c in unicodedata.normalize('NFD', text)
+                  if unicodedata.category(c) != 'Mn')
 
 def get_llm_response(prompt, model="claude"):
     """Получает ответ от выбранной LLM модели"""
@@ -129,9 +184,35 @@ def get_llm_response(prompt, model="claude"):
 
 def generate_exercise(model="claude"):
     """Генерирует новое упражнение с использованием выбранной модели LLM"""
-    # Выбираем случайное время или конструкцию
-    all_options = TENSES + FORMS + CONSTRUCTIONS
-    selected_option = random.choice(all_options)
+    # Получаем активные темы
+    active_topics = []
+    
+    # Добавляем выбранные времена
+    for tense in TENSES:
+        if st.session_state.selected_topics.get(tense, False):
+            active_topics.append(tense)
+    
+    # Добавляем выбранные формы
+    for form in FORMS:
+        if st.session_state.selected_topics.get(form, False):
+            active_topics.append(form)
+    
+    # Добавляем местоимения, если выбраны
+    if st.session_state.selected_topics.get('Pronombres', False):
+        active_topics.append('Pronombres (притяжательные и пр.)')
+    
+    # Добавляем конструкции, если выбрана парафразис
+    if st.session_state.selected_topics.get('Paráfrasis', False):
+        active_topics.extend(CONSTRUCTIONS)
+    
+    # Проверяем, что хотя бы одна тема выбрана
+    if not active_topics:
+        st.warning("Выберите хотя бы одну тему в настройках")
+        # Возвращаем все темы, если ничего не выбрано
+        active_topics = TENSES + FORMS + ['Pronombres (притяжательные и пр.)'] + CONSTRUCTIONS
+    
+    # Выбираем случайную тему из активных
+    selected_option = random.choice(active_topics)
     
     prompt = f"""
     Создай простое предложение на испанском языке (Castellano, Испания) для тренировки глагола в форме "{selected_option}".
@@ -166,65 +247,84 @@ def generate_exercise(model="claude"):
     return None
 
 def check_answer(user_input, correct_answer):
-    """Проверяет ответ пользователя"""
+    """Проверяет ответ пользователя с учетом игнорирования акцентов и ñ"""
+    if not user_input or not correct_answer:
+        return False
+        
     # Нормализация строк для сравнения
-    user_norm = user_input.strip().lower()
-    correct_norm = correct_answer.strip().lower()
+    user_norm = normalize_spanish_text(user_input.strip().lower())
+    correct_norm = normalize_spanish_text(correct_answer.strip().lower())
+    
     return user_norm == correct_norm
 
 def generate_audio(text, voice_id):
-    """Генерирует аудио с помощью Elevenlabs API"""
+    """Генерирует аудио с помощью Elevenlabs API напрямую через requests"""
     try:
-        audio = elevenlabs_client.generate(
-            text=text,
-            voice=voice_id,
-            model="eleven_multilingual_v2"
-        )
-        return audio.content
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": elevenlabs_api_key
+        }
+        
+        data = {
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.5
+            }
+        }
+        
+        response = requests.post(url, json=data, headers=headers)
+        
+        if response.status_code == 200:
+            return response.content
+        else:
+            st.error(f"Ошибка API ElevenLabs: {response.status_code}")
+            return None
     except Exception as e:
         st.error(f"Ошибка при генерации аудио: {str(e)}")
         return None
 
-def next_exercise():
-    """Переход к следующему упражнению"""
-    st.session_state.current_exercise = generate_exercise(st.session_state.selected_model)
-    st.session_state.user_answer = ""
-    st.session_state.submitted = False
-    st.session_state.correct = None
-    st.session_state.show_translation = False
-    st.session_state.audio_ready = False
-    st.session_state.audio_data = None
+def autoplay_audio(audio_data):
+    """Воспроизводит аудио автоматически с помощью HTML-элемента audio"""
+    b64 = base64.b64encode(audio_data).decode()
+    md = f"""
+        <audio autoplay controls>
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        </audio>
+        """
+    st.markdown(md, unsafe_allow_html=True)
 
-# Боковая панель с настройками
-with st.sidebar:
-    st.title("Настройки")
-    
-    st.session_state.selected_model = st.radio(
-        "Выберите LLM модель:",
-        options=["claude", "gpt"],
-        index=0,
-        format_func=lambda x: "Claude 3.7 Sonnet" if x == "claude" else "GPT-4o"
-    )
-    
-    st.session_state.selected_voice = st.radio(
-        "Выберите голос для озвучивания:",
-        options=["Jhenny Antiques", "Benjamin"],
-        index=0
-    )
-    
-    voice_id_map = {
-        "Jhenny Antiques": "2Lb1en5ujrODDIqmp7F3",
-        "Benjamin": "LruHrtVF6PSyGItzMNHS"
-    }
-    st.session_state.voice_id = voice_id_map[st.session_state.selected_voice]
+def toggle_settings():
+    """Переключает видимость настроек"""
+    st.session_state.show_settings = not st.session_state.show_settings
+
+def apply_settings_and_generate():
+    """Обработчик нажатия кнопки применения настроек"""
+    st.session_state.show_settings = False
+    st.session_state.needs_new_exercise = True
+
+def next_exercise_callback():
+    """Обработчик нажатия кнопки 'Далее'"""
+    st.session_state.needs_new_exercise = True
 
 # Основной интерфейс
 st.title("Тренажёр испанских глаголов 🇪🇸")
 
-# Генерация упражнения при первом запуске или нажатии кнопки "Далее"
-if not st.session_state.current_exercise:
+# Генерация упражнения при первом запуске или флаге needs_new_exercise
+if not st.session_state.current_exercise or st.session_state.needs_new_exercise:
     with st.spinner("Генерируем задание..."):
         st.session_state.current_exercise = generate_exercise(st.session_state.selected_model)
+        st.session_state.user_answer = ""
+        st.session_state.submitted = False
+        st.session_state.correct = None
+        st.session_state.show_translation = False
+        st.session_state.audio_ready = False
+        st.session_state.audio_data = None
+        st.session_state.needs_new_exercise = False
 
 # Если упражнение загружено, отображаем его
 if st.session_state.current_exercise:
@@ -233,8 +333,14 @@ if st.session_state.current_exercise:
     # Отображение инфинитива глагола и времени
     st.markdown(f"### {exercise['verb_infinitive']} ({exercise['tense']})")
     
-    # Отображение предложения с пропуском
-    st.markdown(f"**{exercise['incomplete_sentence']}**")
+    # Проверяем, был ли уже отправлен ответ
+    if st.session_state.submitted:
+        # Показываем предложение с подставленным правильным ответом
+        complete_sentence = exercise['incomplete_sentence'].replace('...', f'**{exercise["correct_form"]}**')
+        st.markdown(f"**{complete_sentence}**")
+    else:
+        # Отображение предложения с пропуском
+        st.markdown(f"**{exercise['incomplete_sentence']}**")
     
     # Поле ввода ответа
     user_input = st.text_input(
@@ -266,16 +372,12 @@ if st.session_state.current_exercise:
         st.session_state.submitted = True
         st.session_state.correct = check_answer(user_input, exercise['correct_form'])
         
-        # Генерируем аудио после проверки
-        with st.spinner("Подготовка аудио..."):
-            st.session_state.audio_data = generate_audio(
-                exercise['sentence'],
-                st.session_state.voice_id
-            )
-            st.session_state.audio_ready = True
+        # Отмечаем, что аудио еще не готово
+        st.session_state.audio_ready = False
+        st.session_state.audio_data = None
         
         # Перезагружаем страницу для отображения результатов
-        st.rerun()
+        # st.rerun()  # Закомментируем, чтобы не терять контекст
     
     # Отображение результатов проверки
     if st.session_state.submitted:
@@ -296,28 +398,149 @@ if st.session_state.current_exercise:
     col3, col4 = st.columns(2)
     
     with col3:
-        if st.session_state.submitted and st.session_state.audio_ready:
+        if st.session_state.submitted:
+            # Показываем кнопку озвучивания
             audio_button = st.button(
                 "🔊 Озвучить",
                 use_container_width=True
             )
-            if audio_button and st.session_state.audio_data:
-                try:
-                    st.audio(st.session_state.audio_data, format="audio/mp3")
-                except Exception as e:
-                    st.error(f"Ошибка при воспроизведении аудио: {str(e)}")
-    
-    with col4:
-        next_button = st.button(
-            "Далее ➡️",
-            use_container_width=True
-        )
-        if next_button:
-            with st.spinner("Генерируем новое задание..."):
-                next_exercise()
-                st.rerun()
+            
+            # Генерируем аудио только при нажатии на кнопку
+            if audio_button:
+                with st.spinner("Подготовка аудио..."):
+                    try:
+                        # Генерируем аудио при нажатии на кнопку
+                        sentence_to_speak = exercise['sentence']
+                        audio_data = generate_audio(
+                            sentence_to_speak,
+                            st.session_state.voice_id
+                        )
+                        if audio_data:
+                            # Сохраняем для возможного повторного использования
+                            st.session_state.audio_data = audio_data
+                            st.session_state.audio_ready = True
+                            # Отображаем аудио с автовоспроизведением
+                            autoplay_audio(audio_data)
+                        else:
+                            st.error("Не удалось сгенерировать аудио.")
+                    except Exception as e:
+                        st.error(f"Ошибка при генерации аудио: {str(e)}")
+            
+            # Если аудио уже было сгенерировано, показываем его без автовоспроизведения
+            elif st.session_state.audio_ready and st.session_state.audio_data:
+                st.audio(st.session_state.audio_data, format="audio/mpeg")
+
+        with col4:
+            next_button = st.button(
+                "Далее ➡️",
+                use_container_width=True,
+                on_click=next_exercise_callback
+            )
+
+# Обработка случая, когда упражнение не загружено
 else:
-    st.warning("Не удалось загрузить упражнение. Пожалуйста, попробуйте еще раз.")
-    if st.button("Попробовать снова"):
-        next_exercise()
-        st.rerun() 
+    if not st.session_state.show_settings:  # Показываем сообщение только если не в режиме настроек
+        st.warning("Не удалось загрузить упражнение. Пожалуйста, попробуйте еще раз.")
+        st.button("Попробовать снова", key="retry_btn", on_click=next_exercise_callback)
+
+# Кнопка для отображения/скрытия настроек внизу страницы
+st.markdown("---")
+settings_button = st.button("⚙️ Настройки", on_click=toggle_settings)
+
+# Настройки (показываются только при нажатии на кнопку)
+if st.session_state.show_settings:
+    st.markdown('<div class="settings-section">', unsafe_allow_html=True)
+    st.subheader("Настройки приложения")
+    
+    # Выбор тем для тренировки
+    st.subheader("Выберите темы для тренировки:")
+    
+    # Времена (Tenses)
+    st.markdown("#### Времена:")
+    col_tenses1, col_tenses2 = st.columns(2)
+    with col_tenses1:
+        for tense in TENSES[:3]:
+            st.session_state.selected_topics[tense] = st.checkbox(
+                tense, 
+                value=st.session_state.selected_topics.get(tense, True),
+                key=f"check_{tense}"
+            )
+    with col_tenses2:
+        for tense in TENSES[3:]:
+            st.session_state.selected_topics[tense] = st.checkbox(
+                tense, 
+                value=st.session_state.selected_topics.get(tense, True),
+                key=f"check_{tense}"
+            )
+    
+    # Формы (Forms)
+    st.markdown("#### Формы:")
+    col_forms1, col_forms2 = st.columns(2)
+    with col_forms1:
+        st.session_state.selected_topics['Participio'] = st.checkbox(
+            'Participio',
+            value=st.session_state.selected_topics.get('Participio', True),
+            key="check_Participio"
+        )
+    with col_forms2:
+        st.session_state.selected_topics['Gerundio'] = st.checkbox(
+            'Gerundio',
+            value=st.session_state.selected_topics.get('Gerundio', True),
+            key="check_Gerundio"
+        )
+    
+    # Другое
+    st.markdown("#### Другое:")
+    col_other1, col_other2 = st.columns(2)
+    with col_other1:
+        st.session_state.selected_topics['Pronombres'] = st.checkbox(
+            'Pronombres (местоимения)',
+            value=st.session_state.selected_topics.get('Pronombres', True),
+            key="check_Pronouns"
+        )
+    with col_other2:
+        st.session_state.selected_topics['Paráfrasis'] = st.checkbox(
+            'Paráfrasis (конструкции)',
+            value=st.session_state.selected_topics.get('Paráfrasis', True),
+            key="check_Paraphrasis"
+        )
+    
+    st.markdown("---")
+    
+    # Выбор LLM модели
+    model_option = st.radio(
+        "Выберите LLM модель:",
+        options=["claude", "gpt"],
+        index=0 if st.session_state.selected_model == "claude" else 1,
+        format_func=lambda x: "Claude 3 Opus" if x == "claude" else "GPT-4o",
+        horizontal=True
+    )
+    if model_option != st.session_state.selected_model:
+        st.session_state.selected_model = model_option
+    
+    # Выбор голоса для озвучивания
+    voice_option = st.radio(
+        "Выберите голос для озвучивания:",
+        options=["Jhenny Antiques", "Benjamin"],
+        index=0 if st.session_state.selected_voice == "Jhenny Antiques" else 1,
+        horizontal=True
+    )
+    if voice_option != st.session_state.selected_voice:
+        st.session_state.selected_voice = voice_option
+    
+    # Карта ID голосов Elevenlabs
+    voice_id_map = {
+        "Jhenny Antiques": "2Lb1en5ujrODDIqmp7F3",
+        "Benjamin": "LruHrtVF6PSyGItzMNHS"
+    }
+    st.session_state.voice_id = voice_id_map[st.session_state.selected_voice]
+
+    # Кнопка для применения настроек и генерации нового упражнения
+    st.button(
+        "Применить настройки и получить новое задание", 
+        use_container_width=True, 
+        on_click=apply_settings_and_generate,
+        key="apply_settings"
+    )
+    
+    st.markdown('</div>', unsafe_allow_html=True) 
