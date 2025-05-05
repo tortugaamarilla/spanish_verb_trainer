@@ -109,6 +109,8 @@ if 'selected_topics' not in st.session_state:
     }
 if 'needs_new_exercise' not in st.session_state:
     st.session_state.needs_new_exercise = False
+if 'used_verbs' not in st.session_state:
+    st.session_state.used_verbs = []  # Список для отслеживания недавно использованных глаголов
 
 # Список времён и конструкций для тренировки
 TENSES = [
@@ -182,7 +184,7 @@ def get_llm_response(prompt, model="claude"):
         st.error(f"Ошибка при обращении к API: {str(e)}")
         return None
 
-def generate_exercise(model="claude"):
+def generate_exercise(model="claude", max_attempts=3):
     """Генерирует новое упражнение с использованием выбранной модели LLM"""
     # Получаем активные темы
     active_topics = []
@@ -214,36 +216,57 @@ def generate_exercise(model="claude"):
     # Выбираем случайную тему из активных
     selected_option = random.choice(active_topics)
     
-    prompt = f"""
-    Создай простое предложение на испанском языке (Castellano, Испания) для тренировки глагола в форме "{selected_option}".
+    # Список недавно использованных глаголов для исключения
+    excluded_verbs = ", ".join([f'"{verb}"' for verb in st.session_state.used_verbs[-10:]])
     
-    Верни ответ строго в формате JSON:
-    {{
-        "sentence": "полное предложение на испанском",
-        "incomplete_sentence": "предложение с пропуском на месте целевого глагола",
-        "verb_infinitive": "глагол в инфинитиве",
-        "tense": "{selected_option}",
-        "correct_form": "правильная форма глагола, которая должна быть в пропуске",
-        "explanation": "краткое грамматическое объяснение, почему используется эта форма",
-        "translation": "перевод полного предложения на русский язык"
-    }}
-    
-    Убедись, что пропуск действительно требует указанной формы глагола и подходит только одна форма.
-    Предложение должно быть простым и понятным для начинающих/продолжающих изучать испанский язык.
-    """
-    
-    response = get_llm_response(prompt, model)
-    if response:
-        try:
-            # Извлекаем JSON из ответа
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
-            json_str = response[json_start:json_end]
-            exercise = json.loads(json_str)
-            return exercise
-        except Exception as e:
-            st.error(f"Ошибка при обработке ответа: {str(e)}")
-            return None
+    # Делаем несколько попыток, чтобы получить новый глагол
+    for attempt in range(max_attempts):
+        prompt = f"""
+        Создай простое предложение на испанском языке (Castellano, Испания) для тренировки глагола в форме "{selected_option}".
+        
+        ВАЖНО: Используй разнообразные глаголы! Если возможно, НЕ используй следующие недавно использованные глаголы: {excluded_verbs}.
+        Выбери другой, менее распространенный глагол. Старайся использовать глаголы из разных семантических групп 
+        (движение, говорение, чувства, действия с предметами, мышление и т.д.).
+        
+        Верни ответ строго в формате JSON:
+        {{
+            "sentence": "полное предложение на испанском",
+            "incomplete_sentence": "предложение с пропуском на месте целевого глагола",
+            "verb_infinitive": "глагол в инфинитиве",
+            "tense": "{selected_option}",
+            "correct_form": "правильная форма глагола, которая должна быть в пропуске",
+            "explanation": "краткое грамматическое объяснение, почему используется эта форма",
+            "translation": "перевод полного предложения на русский язык"
+        }}
+        
+        Убедись, что пропуск действительно требует указанной формы глагола и подходит только одна форма.
+        Предложение должно быть простым и понятным для начинающих/продолжающих изучать испанский язык.
+        """
+        
+        response = get_llm_response(prompt, model)
+        if response:
+            try:
+                # Извлекаем JSON из ответа
+                json_start = response.find('{')
+                json_end = response.rfind('}') + 1
+                json_str = response[json_start:json_end]
+                exercise = json.loads(json_str)
+                
+                # Проверяем, не был ли этот глагол недавно использован
+                if exercise['verb_infinitive'] not in st.session_state.used_verbs:
+                    # Добавляем глагол в историю использованных глаголов
+                    st.session_state.used_verbs.append(exercise['verb_infinitive'])
+                    # Ограничиваем список 20 последними глаголами
+                    if len(st.session_state.used_verbs) > 20:
+                        st.session_state.used_verbs = st.session_state.used_verbs[-20:]
+                    return exercise
+                elif attempt == max_attempts - 1:
+                    # Если это последняя попытка, возвращаем упражнение, даже если глагол повторяется
+                    return exercise
+            except Exception as e:
+                st.error(f"Ошибка при обработке ответа: {str(e)}")
+                if attempt == max_attempts - 1:
+                    return None
     return None
 
 def check_answer(user_input, correct_answer):
@@ -452,11 +475,7 @@ if st.session_state.show_settings:
     st.markdown('<div class="settings-section">', unsafe_allow_html=True)
     st.subheader("Настройки приложения")
     
-    # Выбор тем для тренировки
-    st.subheader("Выберите темы для тренировки:")
-    
     # Времена (Tenses)
-    st.markdown("#### Времена:")
     col_tenses1, col_tenses2 = st.columns(2)
     with col_tenses1:
         for tense in TENSES[:3]:
@@ -474,7 +493,6 @@ if st.session_state.show_settings:
             )
     
     # Формы (Forms)
-    st.markdown("#### Формы:")
     col_forms1, col_forms2 = st.columns(2)
     with col_forms1:
         st.session_state.selected_topics['Participio'] = st.checkbox(
@@ -490,7 +508,6 @@ if st.session_state.show_settings:
         )
     
     # Другое
-    st.markdown("#### Другое:")
     col_other1, col_other2 = st.columns(2)
     with col_other1:
         st.session_state.selected_topics['Pronombres'] = st.checkbox(
