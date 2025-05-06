@@ -190,48 +190,115 @@ openai_api_key = st.secrets["OPENAI_API_KEY"]
 # Инициализация клиентов API
 elevenlabs_client = ElevenLabs(api_key=elevenlabs_api_key)
 
-# Настройка сессионных переменных
-if 'current_exercise' not in st.session_state:
-    st.session_state.current_exercise = {}
-if 'user_answer' not in st.session_state:
-    st.session_state.user_answer = ""
-if 'submitted' not in st.session_state:
-    st.session_state.submitted = False
-if 'correct' not in st.session_state:
-    st.session_state.correct = None
-if 'show_translation' not in st.session_state:
-    st.session_state.show_translation = False
-if 'audio_ready' not in st.session_state:
-    st.session_state.audio_ready = False
-if 'audio_data' not in st.session_state:
-    st.session_state.audio_data = None
-if 'show_settings' not in st.session_state:
-    st.session_state.show_settings = False
-if 'selected_model' not in st.session_state:
-    st.session_state.selected_model = "claude"
-if 'selected_voice' not in st.session_state:
-    st.session_state.selected_voice = "Jhenny Antiques"
-if 'voice_id' not in st.session_state:
-    st.session_state.voice_id = "2Lb1en5ujrODDIqmp7F3"  # ID для Jhenny Antiques по умолчанию
-if 'selected_topics' not in st.session_state:
-    # По умолчанию выбраны все темы
-    st.session_state.selected_topics = {
-        'Presente': True,
-        'Pretérito indefinido (perfecto simple)': True,
-        'Pretérito imperfecto': True,
-        'Pretérito perfecto compuesto': True, 
-        'Futuro simple': True,
-        'Futuro compuesto': True,
-        'Imperativo': True,
-        'Participio': True,
-        'Gerundio': True,
-        'Pronombres': True,
-        'Paráfrasis': True
-    }
-if 'needs_new_exercise' not in st.session_state:
-    st.session_state.needs_new_exercise = False
-if 'used_verbs' not in st.session_state:
-    st.session_state.used_verbs = []  # Список для отслеживания недавно использованных глаголов
+# Добавляем глобальные переменные для хранения глаголов из файлов
+VERBS_LIST_1 = []
+VERBS_LIST_2 = []
+VERBS_SESSION_1 = []  # Для отслеживания использованных глаголов из первого списка
+VERBS_SESSION_2 = []  # Для отслеживания использованных глаголов из второго списка
+
+# Загружаем глаголы из файлов
+try:
+    with open('verbs_list_1.txt', 'r', encoding='utf-8') as f:
+        VERBS_LIST_1 = [line.strip() for line in f if line.strip()]
+except Exception as e:
+    print(f"Ошибка при загрузке verbs_list_1.txt: {str(e)}")
+
+try:
+    with open('verbs_list_2.txt', 'r', encoding='utf-8') as f:
+        VERBS_LIST_2 = [line.strip() for line in f if line.strip()]
+except Exception as e:
+    print(f"Ошибка при загрузке verbs_list_2.txt: {str(e)}")
+
+def initialize_session_state():
+    """Инициализирует переменные состояния сессии."""
+    if 'response_history' not in st.session_state:
+        st.session_state.response_history = []
+    
+    if 'current_exercise' not in st.session_state:
+        st.session_state.current_exercise = None
+    
+    if 'show_explanation' not in st.session_state:
+        st.session_state.show_explanation = False
+    
+    if 'selected_topics' not in st.session_state:
+        # По умолчанию выбраны все темы
+        st.session_state.selected_topics = {
+            'Presente': True,
+            'Pretérito indefinido (perfecto simple)': True,
+            'Pretérito imperfecto': True,
+            'Pretérito perfecto compuesto': True, 
+            'Futuro simple': True,
+            'Futuro compuesto': True,
+            'Imperativo': True,
+            'Participio': True,
+            'Gerundio': True,
+            'Pronombres': True,
+            'Paráfrasis': True
+        }
+    
+    if 'user_input' not in st.session_state:
+        st.session_state.user_input = ""
+    
+    if 'submitted' not in st.session_state:
+        st.session_state.submitted = False
+    
+    if 'previous_response' not in st.session_state:
+        st.session_state.previous_response = ""
+    
+    if 'used_verbs' not in st.session_state:
+        st.session_state.used_verbs = []  # Список для отслеживания недавно использованных глаголов
+    
+    if 'settings_expanded' not in st.session_state:
+        st.session_state.settings_expanded = False
+    
+    if 'selected_model' not in st.session_state:
+        st.session_state.selected_model = "claude"
+    
+    if 'speech_rate' not in st.session_state:
+        st.session_state.speech_rate = 0.8
+    
+    if 'gender_preference' not in st.session_state:
+        st.session_state.gender_preference = "Мужской"
+    
+    if 'user_answer' not in st.session_state:
+        st.session_state.user_answer = ""
+    
+    if 'correct' not in st.session_state:
+        st.session_state.correct = None
+    
+    if 'show_translation' not in st.session_state:
+        st.session_state.show_translation = False
+    
+    if 'audio_ready' not in st.session_state:
+        st.session_state.audio_ready = False
+    
+    if 'audio_data' not in st.session_state:
+        st.session_state.audio_data = None
+    
+    if 'show_settings' not in st.session_state:
+        st.session_state.show_settings = False
+    
+    if 'selected_voice' not in st.session_state:
+        st.session_state.selected_voice = "Jhenny Antiques"
+    
+    if 'voice_id' not in st.session_state:
+        st.session_state.voice_id = "2Lb1en5ujrODDIqmp7F3"  # ID для Jhenny Antiques по умолчанию
+    
+    if 'needs_new_exercise' not in st.session_state:
+        st.session_state.needs_new_exercise = False
+    
+    # Добавляем переменные состояния для отслеживания глаголов из файлов
+    if 'verbs_session_1' not in st.session_state:
+        st.session_state.verbs_session_1 = []
+        
+    if 'verbs_session_2' not in st.session_state:
+        st.session_state.verbs_session_2 = []
+
+# Основной интерфейс
+st.title("Тренажёр по грамматике 🇪🇸")
+
+# Инициализация переменных сессии
+initialize_session_state()
 
 # Список времён и конструкций для тренировки
 TENSES = [
@@ -337,6 +404,38 @@ def generate_exercise(model="claude", max_attempts=3):
     
     # Выбираем случайную тему из активных
     selected_option = random.choice(active_topics)
+    
+    # Выбираем глагол из одного из файлов согласно указанным вероятностям (60/40)
+    selected_verb = None
+    
+    # Если оба списка глаголов не пусты, выбираем глагол
+    if VERBS_LIST_1 or VERBS_LIST_2:
+        # Восстанавливаем списки, если все глаголы были использованы
+        if not set(VERBS_LIST_1) - set(st.session_state.verbs_session_1) and VERBS_LIST_1:
+            st.session_state.verbs_session_1 = []
+            
+        if not set(VERBS_LIST_2) - set(st.session_state.verbs_session_2) and VERBS_LIST_2:
+            st.session_state.verbs_session_2 = []
+        
+        # Определяем доступные глаголы
+        available_verbs_1 = [v for v in VERBS_LIST_1 if v not in st.session_state.verbs_session_1]
+        available_verbs_2 = [v for v in VERBS_LIST_2 if v not in st.session_state.verbs_session_2]
+        
+        # Если один из списков пуст, используем только другой
+        if not available_verbs_1 and available_verbs_2:
+            verb_source = 2
+        elif available_verbs_1 and not available_verbs_2:
+            verb_source = 1
+        else:
+            # В противном случае выбираем источник на основе вероятности
+            verb_source = 1 if random.random() < 0.6 else 2
+        
+        if verb_source == 1 and available_verbs_1:
+            selected_verb = random.choice(available_verbs_1)
+            st.session_state.verbs_session_1.append(selected_verb)
+        elif verb_source == 2 and available_verbs_2:
+            selected_verb = random.choice(available_verbs_2)
+            st.session_state.verbs_session_2.append(selected_verb)
     
     # Список недавно использованных глаголов для исключения
     excluded_verbs = ", ".join([f'"{verb}"' for verb in st.session_state.used_verbs[-10:]])
@@ -471,12 +570,20 @@ def generate_exercise(model="claude", max_attempts=3):
     
     # Делаем несколько попыток, чтобы получить новый глагол
     for attempt in range(max_attempts):
+        verb_instruction = ""
+        if selected_verb:
+            verb_instruction = f'ВАЖНО: В этом задании ОБЯЗАТЕЛЬНО используй глагол "{selected_verb}".'
+        else:
+            verb_instruction = f"""
+            ВАЖНО: Используй разнообразные глаголы! Если возможно, НЕ используй следующие недавно использованные глаголы: {excluded_verbs}.
+            Выбери другой, менее распространенный глагол. Старайся использовать глаголы из разных семантических групп 
+            (движение, говорение, чувства, действия с предметами, мышление и т.д.).
+            """
+        
         prompt = f"""
         Создай простое предложение на испанском языке (Castellano, Испания) для тренировки глагола в форме "{selected_option}".
         
-        ВАЖНО: Используй разнообразные глаголы! Если возможно, НЕ используй следующие недавно использованные глаголы: {excluded_verbs}.
-        Выбери другой, менее распространенный глагол. Старайся использовать глаголы из разных семантических групп 
-        (движение, говорение, чувства, действия с предметами, мышление и т.д.).
+        {verb_instruction}
         
         ВАЖНО: Убедись, что задание составлено так, чтобы вместо пропуска подходил лишь один верный вариант слова/фразы.
         Добавь временные маркеры и другие элементы, чётко определяющие необходимость использования нужной видовременной формы.
@@ -549,6 +656,11 @@ def generate_exercise(model="claude", max_attempts=3):
                 json_end = response.rfind('}') + 1
                 json_str = response[json_start:json_end]
                 exercise = json.loads(json_str)
+                
+                # Если глагол был выбран из списка, убедимся что он используется
+                if selected_verb and exercise['verb_infinitive'] != selected_verb:
+                    if attempt < max_attempts - 1:
+                        continue
                 
                 # Проверяем, не был ли этот глагол недавно использован
                 if exercise['verb_infinitive'] not in st.session_state.used_verbs:
@@ -634,11 +746,9 @@ def next_exercise_callback():
     # Очищаем поле ввода при переходе к новому заданию
     st.session_state.user_answer = ""
 
-# Основной интерфейс
-st.title("Тренажёр по грамматике 🇪🇸")
-
 # Генерация упражнения при первом запуске или флаге needs_new_exercise
 if not st.session_state.current_exercise or st.session_state.needs_new_exercise:
+    st.session_state.needs_new_exercise = False
     with st.spinner("Генерируем задание..."):
         st.session_state.current_exercise = generate_exercise(st.session_state.selected_model)
         st.session_state.user_answer = ""
@@ -647,7 +757,6 @@ if not st.session_state.current_exercise or st.session_state.needs_new_exercise:
         st.session_state.show_translation = False
         st.session_state.audio_ready = False
         st.session_state.audio_data = None
-        st.session_state.needs_new_exercise = False
 
 # Если упражнение загружено, отображаем его
 if st.session_state.current_exercise:
