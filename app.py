@@ -222,6 +222,7 @@ if 'selected_topics' not in st.session_state:
         'Pretérito perfecto compuesto': True, 
         'Futuro simple': True,
         'Futuro compuesto': True,
+        'Imperativo': True,
         'Participio': True,
         'Gerundio': True,
         'Pronombres': True,
@@ -239,7 +240,8 @@ TENSES = [
     "Pretérito imperfecto",
     "Pretérito perfecto compuesto",
     "Futuro simple",
-    "Futuro compuesto"
+    "Futuro compuesto",
+    "Imperativo"
 ]
 
 FORMS = [
@@ -348,6 +350,9 @@ def generate_exercise(model="claude", max_attempts=3):
         Выбери другой, менее распространенный глагол. Старайся использовать глаголы из разных семантических групп 
         (движение, говорение, чувства, действия с предметами, мышление и т.д.).
         
+        ВАЖНО: Убедись, что задание составлено так, чтобы вместо пропуска подходил лишь один верный вариант слова/фразы.
+        Добавь временные маркеры и другие элементы, чётко определяющие необходимость использования нужной видовременной формы.
+        
         Верни ответ строго в формате JSON:
         {{
             "sentence": "полное предложение на испанском",
@@ -355,7 +360,7 @@ def generate_exercise(model="claude", max_attempts=3):
             "verb_infinitive": "глагол в инфинитиве",
             "tense": "{selected_option}",
             "correct_form": "правильная форма глагола, которая должна быть в пропуске",
-            "explanation": "краткое грамматическое объяснение, почему используется эта форма",
+            "explanation": "краткое грамматическое объяснение на русском языке, почему используется эта форма",
             "translation": "перевод полного предложения на русский язык"
         }}
         
@@ -453,6 +458,8 @@ def apply_settings_and_generate():
 def next_exercise_callback():
     """Обработчик нажатия кнопки 'Далее'"""
     st.session_state.needs_new_exercise = True
+    # Очищаем поле ввода при переходе к новому заданию
+    st.session_state.user_answer = ""
 
 # Основной интерфейс
 st.title("Тренажёр испанских глаголов 🇪🇸")
@@ -473,8 +480,8 @@ if not st.session_state.current_exercise or st.session_state.needs_new_exercise:
 if st.session_state.current_exercise:
     exercise = st.session_state.current_exercise
     
-    # Отображение инфинитива глагола и времени
-    st.markdown(f"### {exercise['verb_infinitive']} ({exercise['tense']})")
+    # Отображение инфинитива глагола (без объяснения в скобках)
+    st.markdown(f"### {exercise['verb_infinitive']}")
     
     # Проверяем, был ли уже отправлен ответ
     if st.session_state.submitted:
@@ -488,7 +495,7 @@ if st.session_state.current_exercise:
     # Поле ввода ответа
     user_input = st.text_input(
         "Введите форму глагола:",
-        value=st.session_state.user_answer,
+        value="" if st.session_state.needs_new_exercise else st.session_state.user_answer,
         key="answer_input",
         disabled=st.session_state.submitted
     )
@@ -535,7 +542,7 @@ if st.session_state.current_exercise:
         st.session_state.show_translation = True
     
     if st.session_state.show_translation:
-        st.info(f"**Перевод:** {exercise['translation']}")
+        st.info(f"**Подробно:** {exercise['translation']} | {exercise['tense']} | {exercise['explanation']}")
     
     # Кнопки "Озвучить" и "Далее"
     col3, col4 = st.columns(2)
@@ -598,14 +605,14 @@ if st.session_state.show_settings:
     # Времена (Tenses)
     col_tenses1, col_tenses2 = st.columns(2)
     with col_tenses1:
-        for tense in TENSES[:3]:
+        for tense in TENSES[:len(TENSES)//2 + len(TENSES)%2]:
             st.session_state.selected_topics[tense] = st.checkbox(
                 tense, 
                 value=st.session_state.selected_topics.get(tense, True),
                 key=f"check_{tense}"
             )
     with col_tenses2:
-        for tense in TENSES[3:]:
+        for tense in TENSES[len(TENSES)//2 + len(TENSES)%2:]:
             st.session_state.selected_topics[tense] = st.checkbox(
                 tense, 
                 value=st.session_state.selected_topics.get(tense, True),
