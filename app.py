@@ -341,6 +341,23 @@ def generate_exercise(model="claude", max_attempts=3):
     # Список недавно использованных глаголов для исключения
     excluded_verbs = ", ".join([f'"{verb}"' for verb in st.session_state.used_verbs[-10:]])
     
+    # Особые указания для Imperativo
+    special_instructions = ""
+    if selected_option == "Imperativo":
+        special_instructions = """
+        ОСОБЕННО ВАЖНО:
+        Для повелительного наклонения (Imperativo) ОБЯЗАТЕЛЬНО однозначно укажи, к кому обращена просьба или приказ.
+        Используй в предложении прямое обращение (например, "Juan, ..." для tú, "Señor, ..." для usted)
+        или контекст, который четко указывает на форму (единственное/множественное число, формальное/неформальное обращение).
+        Например:
+        - Для tú: "María, ... (помоги мне)" (неформально к одному человеку)
+        - Для usted: "Señor García, ... (помогите мне)" (формально к одному человеку)
+        - Для vosotros: "Chicos, ... (помогите мне)" (неформально к группе)
+        - Для ustedes: "Señores, ... (помогите мне)" (формально к группе)
+        
+        В incomplete_sentence должно быть чётко понятно, какую именно форму Imperativo нужно использовать.
+        """
+    
     # Делаем несколько попыток, чтобы получить новый глагол
     for attempt in range(max_attempts):
         prompt = f"""
@@ -352,6 +369,8 @@ def generate_exercise(model="claude", max_attempts=3):
         
         ВАЖНО: Убедись, что задание составлено так, чтобы вместо пропуска подходил лишь один верный вариант слова/фразы.
         Добавь временные маркеры и другие элементы, чётко определяющие необходимость использования нужной видовременной формы.
+        
+        {special_instructions}
         
         Верни ответ строго в формате JSON:
         {{
@@ -512,7 +531,7 @@ if st.session_state.current_exercise:
     
     with col2:
         translate_button = st.button(
-            "Перевести",
+            "Подробнее",
             use_container_width=True
         )
     
@@ -542,7 +561,13 @@ if st.session_state.current_exercise:
         st.session_state.show_translation = True
     
     if st.session_state.show_translation:
-        st.info(f"**Подробно:** {exercise['translation']} | {exercise['tense']} | {exercise['explanation']}")
+        st.info(f"""
+        **Перевод:** {exercise['translation']}
+        
+        **Форма:** {exercise['tense']}
+        
+        **Объяснение:** {exercise['explanation']}
+        """)
     
     # Кнопки "Озвучить" и "Далее"
     col3, col4 = st.columns(2)
