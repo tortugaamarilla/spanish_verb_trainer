@@ -10,6 +10,7 @@ import unicodedata
 import base64
 from elevenlabs.client import ElevenLabs
 import re
+import httpx
 
 # Скрываем стандартные элементы Streamlit
 st.set_page_config(
@@ -369,18 +370,36 @@ def get_llm_response(prompt, model="claude-haiku"):
             )
             return response.content[0].text
         elif model.startswith("gpt"):
-            client = openai.OpenAI(api_key=openai_api_key)
-            model_name = "gpt-4o" if model == "gpt-4o" else "gpt-4o-mini"
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": "Ты - помощник для тренировки испанских глаголов."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,
-                max_tokens=1000
-            )
-            return response.choices[0].message.content
+            try:
+                # Самый простой способ инициализации OpenAI с минимумом параметров
+                client = openai.OpenAI(api_key=openai_api_key)
+                model_name = "gpt-4o" if model == "gpt-4o" else "gpt-4o-mini"
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": "Ты - помощник для тренировки испанских глаголов."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.2,
+                    max_tokens=1000
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                # Альтернативный метод, если основной не сработал
+                st.error(f"Пробуем альтернативный метод для GPT после ошибки: {str(e)}")
+                # Используем legacy метод без создания клиента
+                openai.api_key = openai_api_key
+                model_name = "gpt-4o" if model == "gpt-4o" else "gpt-4o-mini"
+                response = openai.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": "Ты - помощник для тренировки испанских глаголов."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.2,
+                    max_tokens=1000
+                )
+                return response.choices[0].message.content
     except Exception as e:
         st.error(f"Ошибка при обращении к API: {str(e)}")
         return None
@@ -756,46 +775,123 @@ def generate_exercise(model="claude-haiku", max_attempts=3):
                         # Извлекаем основные поля из ответа с помощью regex
                         exercise = {}
                         
-                        # Паттерны для извлечения основных полей
+                        # Расширенные паттерны для извлечения основных полей с большей гибкостью
+                        # Эти паттерны теперь работают с кавычками разных типов и разными форматами
                         patterns = {
-                            "sentence": r'"sentence"\s*:\s*"([^"]+)"',
-                            "incomplete_sentence": r'"incomplete_sentence"\s*:\s*"([^"]+)"',
-                            "verb_infinitive": r'"verb_infinitive"\s*:\s*"([^"]+)"',
-                            "tense": r'"tense"\s*:\s*"([^"]+)"',
-                            "correct_form": r'"correct_form"\s*:\s*"([^"]+)"',
-                            "explanation": r'"explanation"\s*:\s*"([^"]+)"',
-                            "translation": r'"translation"\s*:\s*"([^"]+)"',
-                            "word_type": r'"word_type"\s*:\s*"([^"]+)"',
-                            "base_word": r'"base_word"\s*:\s*"([^"]+)"'
+                            "sentence": r'["\']sentence["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "incomplete_sentence": r'["\']incomplete_sentence["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "verb_infinitive": r'["\']verb_infinitive["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "tense": r'["\']tense["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "correct_form": r'["\']correct_form["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "explanation": r'["\']explanation["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "translation": r'["\']translation["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "word_type": r'["\']word_type["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "base_word": r'["\']base_word["\'][\s]*:[\s]*["\']([^"\']+)["\']'
                         }
                         
+                        # Расширенная логика извлечения полей
                         for field, pattern in patterns.items():
-                            match = re.search(pattern, response)
+                            match = re.search(pattern, response, re.IGNORECASE)
                             if match:
                                 exercise[field] = match.group(1)
                             else:
-                                # Если поле не найдено, используем значения по умолчанию
-                                if field == "word_type":
-                                    exercise[field] = "глагол"
-                                elif field == "base_word" and "verb_infinitive" in exercise:
-                                    exercise[field] = exercise["verb_infinitive"]
+                                # Попробуем более общий паттерн без кавычек
+                                alt_pattern = f'["\']?{field}["\']?\\s*:\\s*["\']?([^,"\'}}]+)["\']?'
+                                match = re.search(alt_pattern, response, re.IGNORECASE)
+                                if match:
+                                    exercise[field] = match.group(1).strip()
                                 else:
-                                    exercise[field] = ""
+                                    # Если поле не найдено, используем значения по умолчанию
+                                    if field == "word_type":
+                                        exercise[field] = "глагол"
+                                    elif field == "base_word" and "verb_infinitive" in exercise:
+                                        exercise[field] = exercise["verb_infinitive"]
+                                    elif field == "tense" and selected_option:
+                                        exercise[field] = selected_option
+                                    else:
+                                        exercise[field] = ""
+                        
+                        # Создаем пустой объект спряжения в качестве запасного варианта
+                        exercise["conjugation"] = {}
+                        
+                        # Пытаемся извлечь формы спряжения для дополнительной информации
+                        conjugation_patterns = {
+                            "yo": r'["\']yo["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "tú": r'["\']tú["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "él": r'["\'](él|el)["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "nosotros": r'["\']nosotros["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "vosotros": r'["\']vosotros["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "ellos": r'["\']ellos["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "form": r'["\']form["\'][\s]*:[\s]*["\']([^"\']+)["\']'
+                        }
+                        
+                        for form, pattern in conjugation_patterns.items():
+                            match = re.search(pattern, response, re.IGNORECASE)
+                            if match:
+                                if form == "él" and len(match.groups()) > 1:
+                                    exercise["conjugation"][form] = match.group(2)  # В этом паттерне два захвата
+                                else:
+                                    exercise["conjugation"][form] = match.group(1)
+                        
+                        # Дополнительные поля для Imperativo
+                        imperativo_patterns = {
+                            "usted": r'["\']usted["\'][\s]*:[\s]*["\']([^"\']+)["\']',
+                            "ustedes": r'["\']ustedes["\'][\s]*:[\s]*["\']([^"\']+)["\']'
+                        }
+                        
+                        if "Imperativo" in response:
+                            for form, pattern in imperativo_patterns.items():
+                                match = re.search(pattern, response, re.IGNORECASE)
+                                if match:
+                                    exercise["conjugation"][form] = match.group(1)
                         
                         # Создаем пустой объект спряжения в качестве запасного варианта
                         exercise["conjugation"] = {}
                         
                         # Проверяем, есть ли минимально необходимые поля
                         required_fields = ["sentence", "incomplete_sentence", "verb_infinitive", "correct_form"]
-                        if all(field in exercise and exercise[field] for field in required_fields):
-                            # st.success("JSON был восстановлен с помощью регулярных выражений")
+                        missing_fields = [field for field in required_fields if not exercise.get(field)]
+                        
+                        if not missing_fields:
+                            # Все обязательные поля найдены
+                            # Сообщение убрано, чтобы не показывать пользователю техническую информацию
                             pass
                         else:
-                            raise Exception("Не удалось извлечь обязательные поля с помощью регулярных выражений")
+                            # Если не хватает полей, попробуем сгенерировать их
+                            if "sentence" in missing_fields and "incomplete_sentence" in exercise and "correct_form" in exercise:
+                                # Восстанавливаем полное предложение из неполного + правильной формы
+                                exercise["sentence"] = exercise["incomplete_sentence"].replace("...", exercise["correct_form"])
                             
+                            if "incomplete_sentence" in missing_fields and "sentence" in exercise and "correct_form" in exercise:
+                                # Восстанавливаем неполное предложение из полного, заменяя правильную форму на ...
+                                exercise["incomplete_sentence"] = exercise["sentence"].replace(exercise["correct_form"], "...")
+                            
+                            # После восстановления проверяем еще раз
+                            missing_fields = [field for field in ["sentence", "incomplete_sentence"] if not exercise.get(field)]
+                            
+                            if "verb_infinitive" in missing_fields:
+                                # Если все еще не хватает глагола, используем заглушку
+                                exercise["verb_infinitive"] = "usar"  # Базовый глагол в качестве заглушки
+                            
+                            if "correct_form" in missing_fields:
+                                # Если все еще не хватает корректной формы, используем выделенный текст
+                                # Это может не сработать, но лучше, чем ничего
+                                form_matches = re.findall(r'["\']([^"\']+)["\'][\s]*(?:es la forma correcta|should be used|es la respuesta correcta)', response)
+                                if form_matches:
+                                    exercise["correct_form"] = form_matches[0]
+                            
+                            # Последняя проверка на наличие критичных полей
+                            if not exercise.get("sentence") or not exercise.get("incomplete_sentence"):
+                                raise Exception(f"Не удалось восстановить обязательные поля. Отсутствуют: {', '.join(missing_fields)}")
+                            
+                            # Не показываем техническое предупреждение пользователю
+                            pass
+                        
                     except Exception as regex_error:
                         # Если даже регулярные выражения не помогли, возвращаем ошибку
                         st.error(f"Не удалось извлечь данные из ответа: {str(regex_error)}")
+                        # Предоставим дополнительную информацию для отладки
+                        # st.write("Получен ответ:", response[:500] + ("..." if len(response) > 500 else ""))
                         if attempt == max_attempts - 1:
                             return None
                         continue
@@ -1000,13 +1096,41 @@ if st.session_state.current_exercise:
         # Отображаем таблицу спряжения с использованием HTML только для глаголов
         try:
             conjugation = exercise.get('conjugation', {})
-            # Проверяем, что это упражнение не на местоимения и есть данные для отображения
+            # Инициализируем html_table со значением по умолчанию
+            html_table = ""
+            
+            # Проверяем, что это упражнение не на местоимения 
             if ("Pronombres" not in exercise.get('tense', '') and 
-                word_type not in ["местоимение", "pronombre", "pronoun"] and
-                conjugation):
+                word_type not in ["местоимение", "pronombre", "pronoun"]):
+                
                 # Формируем заголовок таблицы в зависимости от времени/формы
                 if exercise['tense'] == "Imperativo":
                     table_title = f"Спряжение глагола {exercise['verb_infinitive']} (Imperativo):"
+                    
+                    # Получаем формы из словаря conjugation или используем формы по умолчанию
+                    tu_form = conjugation.get('tú', '-')
+                    usted_form = conjugation.get('usted', '-')
+                    vosotros_form = conjugation.get('vosotros', '-')
+                    ustedes_form = conjugation.get('ustedes', '-')
+                    
+                    # Если все формы пустые, попробуем сгенерировать их
+                    if tu_form == '-' and usted_form == '-' and vosotros_form == '-' and ustedes_form == '-':
+                        # Определяем окончание и основу глагола
+                        verb = exercise['verb_infinitive']
+                        ending = verb[-2:] if len(verb) > 2 else ""
+                        stem = verb[:-2] if len(verb) > 2 else verb
+                        
+                        # Правила для образования повелительного наклонения
+                        if ending == "ar":
+                            tu_form = f"{stem}a"
+                            usted_form = f"{stem}e"
+                            vosotros_form = f"{stem}ad"
+                            ustedes_form = f"{stem}en"
+                        elif ending in ["er", "ir"]:
+                            tu_form = f"{stem}e"
+                            usted_form = f"{stem}a"
+                            vosotros_form = f"{stem}{ending[0]}d"
+                            ustedes_form = f"{stem}an"
                     
                     html_table = f"""
                     <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
@@ -1014,19 +1138,19 @@ if st.session_state.current_exercise:
                         <table style="width: 100%; border-collapse: collapse;">
                             <tr>
                                 <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('tú', '-')}</td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{tu_form}</td>
                             </tr>
                             <tr>
                                 <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>usted</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('usted', '-')}</td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{usted_form}</td>
                             </tr>
                             <tr>
                                 <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('vosotros', '-')}</td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{vosotros_form}</td>
                             </tr>
                             <tr>
                                 <td style="padding: 8px;"><strong>ustedes</strong></td>
-                                <td style="padding: 8px;">{conjugation.get('ustedes', '-')}</td>
+                                <td style="padding: 8px;">{ustedes_form}</td>
                             </tr>
                         </table>
                     </div>
@@ -1040,47 +1164,319 @@ if st.session_state.current_exercise:
                         </div>
                         """
                     else:
-                        html_table = ""
+                        html_table = f"""
+                        <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                            <h4 style="margin-top: 0;">Форма глагола {exercise['verb_infinitive']} ({exercise['tense']}):</h4>
+                            <p style="font-size: 16px; padding: 8px;">Информация отсутствует</p>
+                        </div>
+                        """
                 else:
                     table_title = f"Спряжение глагола {exercise['verb_infinitive']} ({exercise['tense']}):"
                     
-                    html_table = f"""
-                    <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
-                        <h4 style="margin-top: 0;">{table_title}</h4>
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <tr>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>yo</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('yo', '-')}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('tú', '-')}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>él/ella/usted</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('él', '-')}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>nosotros/as</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('nosotros', '-')}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('vosotros', '-')}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px;"><strong>ellos/ellas/ustedes</strong></td>
-                                <td style="padding: 8px;">{conjugation.get('ellos', '-')}</td>
-                            </tr>
-                        </table>
-                    </div>
-                    """
+                    # Проверяем, содержит ли словарь спряжения какие-либо значения
+                    if conjugation and any(conjugation.values()):
+                        html_table = f"""
+                        <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                            <h4 style="margin-top: 0;">{table_title}</h4>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>yo</strong></td>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('yo', '-')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('tú', '-')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>él/ella/usted</strong></td>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('él', '-')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>nosotros/as</strong></td>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('nosotros', '-')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
+                                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('vosotros', '-')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px;"><strong>ellos/ellas/ustedes</strong></td>
+                                    <td style="padding: 8px;">{conjugation.get('ellos', '-')}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        """
+                    else:
+                        # Используем базовую таблицу с формами по умолчанию
+                        # Генерируем базовые формы
+                        verb = exercise['verb_infinitive']
+                        ending = verb[-2:] if len(verb) > 2 else ""
+                        stem = verb[:-2] if len(verb) > 2 else verb
+                        
+                        if exercise['tense'] == "Presente":
+                            # Разные окончания в зависимости от типа глагола
+                            if ending == "ar":
+                                forms = {
+                                    "yo": f"{stem}o",
+                                    "tú": f"{stem}as",
+                                    "él": f"{stem}a",
+                                    "nosotros": f"{stem}amos",
+                                    "vosotros": f"{stem}áis",
+                                    "ellos": f"{stem}an"
+                                }
+                            elif ending == "er":
+                                forms = {
+                                    "yo": f"{stem}o",
+                                    "tú": f"{stem}es",
+                                    "él": f"{stem}e",
+                                    "nosotros": f"{stem}emos",
+                                    "vosotros": f"{stem}éis",
+                                    "ellos": f"{stem}en"
+                                }
+                            elif ending == "ir":
+                                forms = {
+                                    "yo": f"{stem}o",
+                                    "tú": f"{stem}es",
+                                    "él": f"{stem}e",
+                                    "nosotros": f"{stem}imos",
+                                    "vosotros": f"{stem}ís",
+                                    "ellos": f"{stem}en"
+                                }
+                            else:
+                                # Если не удалось определить тип глагола
+                                forms = {
+                                    "yo": "-",
+                                    "tú": "-",
+                                    "él": "-",
+                                    "nosotros": "-",
+                                    "vosotros": "-",
+                                    "ellos": "-"
+                                }
+                        elif exercise['tense'] == "Imperativo":
+                            # Правила для образования повелительного наклонения
+                            if ending == "ar":
+                                forms = {
+                                    "tú": f"{stem}a",
+                                    "él": f"{stem}e",
+                                    "nosotros": f"{stem}emos",
+                                    "vosotros": f"{stem}ad",
+                                    "ellos": f"{stem}en"
+                                }
+                            elif ending in ["er", "ir"]:
+                                forms = {
+                                    "tú": f"{stem}e",
+                                    "él": f"{stem}a",
+                                    "nosotros": f"{stem}amos",
+                                    "vosotros": f"{stem}{ending[0]}d",
+                                    "ellos": f"{stem}an"
+                                }
+                            else:
+                                forms = {
+                                    "tú": "-",
+                                    "él": "-",
+                                    "nosotros": "-",
+                                    "vosotros": "-",
+                                    "ellos": "-"
+                                }
+                        elif exercise['tense'] == "Pretérito indefinido (perfecto simple)":
+                            # Правила для образования простого прошедшего времени
+                            if ending == "ar":
+                                forms = {
+                                    "yo": f"{stem}é",
+                                    "tú": f"{stem}aste",
+                                    "él": f"{stem}ó",
+                                    "nosotros": f"{stem}amos",
+                                    "vosotros": f"{stem}asteis",
+                                    "ellos": f"{stem}aron"
+                                }
+                            elif ending in ["er", "ir"]:
+                                forms = {
+                                    "yo": f"{stem}í",
+                                    "tú": f"{stem}iste",
+                                    "él": f"{stem}ió",
+                                    "nosotros": f"{stem}imos",
+                                    "vosotros": f"{stem}isteis",
+                                    "ellos": f"{stem}ieron"
+                                }
+                            else:
+                                forms = {
+                                    "yo": "-",
+                                    "tú": "-",
+                                    "él": "-",
+                                    "nosotros": "-",
+                                    "vosotros": "-",
+                                    "ellos": "-"
+                                }
+                        elif exercise['tense'] == "Pretérito imperfecto":
+                            # Правила для образования имперфекта
+                            if ending == "ar":
+                                forms = {
+                                    "yo": f"{stem}aba",
+                                    "tú": f"{stem}abas",
+                                    "él": f"{stem}aba",
+                                    "nosotros": f"{stem}ábamos",
+                                    "vosotros": f"{stem}abais",
+                                    "ellos": f"{stem}aban"
+                                }
+                            elif ending in ["er", "ir"]:
+                                forms = {
+                                    "yo": f"{stem}ía",
+                                    "tú": f"{stem}ías",
+                                    "él": f"{stem}ía",
+                                    "nosotros": f"{stem}íamos",
+                                    "vosotros": f"{stem}íais",
+                                    "ellos": f"{stem}ían"
+                                }
+                            else:
+                                forms = {
+                                    "yo": "-",
+                                    "tú": "-",
+                                    "él": "-",
+                                    "nosotros": "-",
+                                    "vosotros": "-",
+                                    "ellos": "-"
+                                }
+                        elif exercise['tense'] == "Futuro simple":
+                            # Правила для образования будущего времени
+                            # Futuro добавляет окончания к инфинитиву
+                            forms = {
+                                "yo": f"{verb}é",
+                                "tú": f"{verb}ás",
+                                "él": f"{verb}á",
+                                "nosotros": f"{verb}emos",
+                                "vosotros": f"{verb}éis",
+                                "ellos": f"{verb}án"
+                            }
+                        elif exercise['tense'] == "Pretérito perfecto compuesto":
+                            # Образование Pretérito perfecto compuesto: haber en presente + participio
+                            if ending == "ar":
+                                participio = f"{stem}ado"
+                            elif ending in ["er", "ir"]:
+                                participio = f"{stem}ido"
+                            else:
+                                participio = "-"
+                                
+                            forms = {
+                                "yo": f"he {participio}",
+                                "tú": f"has {participio}",
+                                "él": f"ha {participio}",
+                                "nosotros": f"hemos {participio}",
+                                "vosotros": f"habéis {participio}",
+                                "ellos": f"han {participio}"
+                            }
+                        elif exercise['tense'] == "Futuro compuesto":
+                            # Образование Futuro compuesto: haber en futuro + participio
+                            if ending == "ar":
+                                participio = f"{stem}ado"
+                            elif ending in ["er", "ir"]:
+                                participio = f"{stem}ido"
+                            else:
+                                participio = "-"
+                                
+                            forms = {
+                                "yo": f"habré {participio}",
+                                "tú": f"habrás {participio}",
+                                "él": f"habrá {participio}",
+                                "nosotros": f"habremos {participio}",
+                                "vosotros": f"habréis {participio}",
+                                "ellos": f"habrán {participio}"
+                            }
+                        elif exercise['tense'] == "Gerundio":
+                            # Правила для образования герундия
+                            if ending == "ar":
+                                forms = {"form": f"{stem}ando"}
+                            elif ending in ["er", "ir"]:
+                                forms = {"form": f"{stem}iendo"}
+                            else:
+                                forms = {"form": "-"}
+                        elif exercise['tense'] == "Participio":
+                            # Правила для образования причастия
+                            if ending == "ar":
+                                forms = {"form": f"{stem}ado"}
+                            elif ending in ["er", "ir"]:
+                                forms = {"form": f"{stem}ido"}
+                            else:
+                                forms = {"form": "-"}
+                        else:
+                            # Для других времен просто используем заглушки
+                            forms = {
+                                "yo": "-",
+                                "tú": "-",
+                                "él": "-",
+                                "nosotros": "-",
+                                "vosotros": "-",
+                                "ellos": "-"
+                            }
+                            
+                        # Создаем HTML-таблицу из сгенерированных форм
+                        if 'form' in forms:
+                            # Для Gerundio и Participio
+                            html_table = f"""
+                            <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                                <h4 style="margin-top: 0;">Форма глагола {exercise['verb_infinitive']} ({exercise['tense']}):</h4>
+                                <p style="font-size: 16px; padding: 8px;">{forms.get('form', '-')}</p>
+                            </div>
+                            """
+                        elif exercise['tense'] == "Imperativo":
+                            # Для Imperativo
+                            html_table = f"""
+                            <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                                <h4 style="margin-top: 0;">{table_title}</h4>
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('tú', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>usted</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('él', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('vosotros', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px;"><strong>ustedes</strong></td>
+                                        <td style="padding: 8px;">{forms.get('ellos', '-')}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            """
+                        else:
+                            # Для всех остальных времён
+                            html_table = f"""
+                            <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                                <h4 style="margin-top: 0;">{table_title}</h4>
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>yo</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('yo', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('tú', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>él/ella/usted</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('él', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>nosotros/as</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('nosotros', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('vosotros', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px;"><strong>ellos/ellas/ustedes</strong></td>
+                                        <td style="padding: 8px;">{forms.get('ellos', '-')}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            """
                 
                 st.markdown(html_table, unsafe_allow_html=True)
-            else:
-                # Запасной вариант, если нет данных о спряжении в новом формате
-                conjugation_text = exercise.get('conjugation_table', 'Информация о спряжении недоступна')
-                st.info(f"**Спряжение глагола {exercise['verb_infinitive']}:**\n\n{conjugation_text}")
         except Exception as e:
             st.error(f"Ошибка при отображении спряжений: {str(e)}")
     
