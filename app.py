@@ -380,7 +380,15 @@ def generate_exercise(model="claude", max_attempts=3):
             "tense": "{selected_option}",
             "correct_form": "правильная форма глагола, которая должна быть в пропуске",
             "explanation": "краткое грамматическое объяснение на русском языке, почему используется эта форма",
-            "translation": "перевод полного предложения на русский язык"
+            "translation": "перевод полного предложения на русский язык",
+            "conjugation": {{
+                "yo": "форма для yo",
+                "tu": "форма для tú",
+                "el": "форма для él/ella/usted",
+                "nosotros": "форма для nosotros/as",
+                "vosotros": "форма для vosotros/as",
+                "ellos": "форма для ellos/ellas/ustedes"
+            }}
         }}
         
         Убедись, что пропуск действительно требует указанной формы глагола и подходит только одна форма.
@@ -556,18 +564,60 @@ if st.session_state.current_exercise:
             st.error(f"❌ Неправильно. Верный ответ: **{exercise['correct_form']}**")
             st.info(f"**Объяснение:** {exercise['explanation']}")
     
-    # Отображение перевода
+    # Отображение перевода и дополнительной информации
     if translate_button:
         st.session_state.show_translation = True
     
     if st.session_state.show_translation:
+        # Отображаем перевод и форму
         st.info(f"""
         **Перевод:** {exercise['translation']}
         
         **Форма:** {exercise['tense']}
-        
-        **Объяснение:** {exercise['explanation']}
         """)
+        
+        # Отображаем таблицу спряжения с использованием HTML
+        try:
+            conjugation = exercise.get('conjugation', {})
+            if conjugation:
+                html_table = f"""
+                <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px;">
+                    <h4 style="margin-top: 0;">Спряжение глагола {exercise['verb_infinitive']} (Presente):</h4>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>yo</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('yo', '-')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('tu', '-')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>él/ella/usted</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('el', '-')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>nosotros/as</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('nosotros', '-')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('vosotros', '-')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px;"><strong>ellos/ellas/ustedes</strong></td>
+                            <td style="padding: 8px;">{conjugation.get('ellos', '-')}</td>
+                        </tr>
+                    </table>
+                </div>
+                """
+                st.markdown(html_table, unsafe_allow_html=True)
+            else:
+                # Запасной вариант, если нет данных о спряжении в новом формате
+                conjugation_text = exercise.get('conjugation_table', 'Информация о спряжении недоступна')
+                st.info(f"**Спряжение глагола {exercise['verb_infinitive']}:**\n\n{conjugation_text}")
+        except Exception as e:
+            st.error(f"Ошибка при отображении спряжений: {str(e)}")
     
     # Кнопки "Озвучить" и "Далее"
     col3, col4 = st.columns(2)
