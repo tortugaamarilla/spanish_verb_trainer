@@ -12,7 +12,7 @@ from elevenlabs.client import ElevenLabs
 
 # Скрываем стандартные элементы Streamlit
 st.set_page_config(
-    page_title="Тренажёр испанских глаголов",
+    page_title="Тренажёр по грамматике",
     page_icon="🇪🇸",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -635,7 +635,7 @@ def next_exercise_callback():
     st.session_state.user_answer = ""
 
 # Основной интерфейс
-st.title("Тренажёр испанских глаголов 🇪🇸")
+st.title("Тренажёр по грамматике 🇪🇸")
 
 # Генерация упражнения при первом запуске или флаге needs_new_exercise
 if not st.session_state.current_exercise or st.session_state.needs_new_exercise:
@@ -683,7 +683,7 @@ if st.session_state.current_exercise:
     
     # Поле ввода ответа
     user_input = st.text_input(
-        "Введите форму глагола:",
+        "Введите пропущенное слово:",
         value="" if st.session_state.needs_new_exercise else st.session_state.user_answer,
         key="answer_input",
         disabled=st.session_state.submitted
