@@ -768,7 +768,7 @@ if st.session_state.current_exercise:
     
     # Формируем заголовок задания в зависимости от типа пропущенного слова
     if word_type == "глагол":
-        instruction_header = f"### Вставьте пропущенный глагол {base_word.upper()} в нужной форме"
+        instruction_header = f"### Вставьте пропущенный глагол <span style='color:red; font-weight:700;'>{base_word.upper()}</span> в нужной форме"
     elif word_type == "местоимение":
         instruction_header = f"### Вставьте пропущенное местоимение"
     elif word_type == "артикль":
@@ -779,7 +779,7 @@ if st.session_state.current_exercise:
         instruction_header = f"### Вставьте пропущенное слово ({word_type})"
     
     # Отображаем заголовок задания
-    st.markdown(instruction_header)
+    st.markdown(instruction_header, unsafe_allow_html=True)
     
     # Проверяем, был ли уже отправлен ответ
     if st.session_state.submitted:
