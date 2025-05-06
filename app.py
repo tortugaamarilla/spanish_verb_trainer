@@ -9,6 +9,7 @@ import elevenlabs
 import unicodedata
 import base64
 from elevenlabs.client import ElevenLabs
+import re
 
 # Скрываем стандартные элементы Streamlit
 st.set_page_config(
@@ -252,7 +253,7 @@ def initialize_session_state():
         st.session_state.settings_expanded = False
     
     if 'selected_model' not in st.session_state:
-        st.session_state.selected_model = "claude"
+        st.session_state.selected_model = "claude-haiku"
     
     if 'speech_rate' not in st.session_state:
         st.session_state.speech_rate = 0.8
@@ -343,13 +344,23 @@ def normalize_spanish_text(text):
     return ''.join(c for c in unicodedata.normalize('NFD', text)
                   if unicodedata.category(c) != 'Mn')
 
-def get_llm_response(prompt, model="claude"):
+def get_llm_response(prompt, model="claude-haiku"):
     """Получает ответ от выбранной LLM модели"""
     try:
-        if model == "claude":
+        if model.startswith("claude"):
             client = anthropic.Anthropic(api_key=anthropic_api_key)
+            model_name = ""
+            if model == "claude-haiku":
+                model_name = "claude-3-haiku-20240307"
+            elif model == "claude-sonnet":
+                model_name = "claude-3-sonnet-20240229"
+            elif model == "claude-3.7-sonnet":
+                model_name = "claude-3-5-sonnet-20240620"
+            elif model == "claude-opus":
+                model_name = "claude-3-opus-20240229"
+            
             response = client.messages.create(
-                model="claude-3-opus-20240229",
+                model=model_name,
                 max_tokens=1000,
                 temperature=0.2,
                 messages=[
@@ -357,10 +368,11 @@ def get_llm_response(prompt, model="claude"):
                 ]
             )
             return response.content[0].text
-        elif model == "gpt":
+        elif model.startswith("gpt"):
             client = openai.OpenAI(api_key=openai_api_key)
+            model_name = "gpt-4o" if model == "gpt-4o" else "gpt-4o-mini"
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=model_name,
                 messages=[
                     {"role": "system", "content": "Ты - помощник для тренировки испанских глаголов."},
                     {"role": "user", "content": prompt}
@@ -373,7 +385,7 @@ def get_llm_response(prompt, model="claude"):
         st.error(f"Ошибка при обращении к API: {str(e)}")
         return None
 
-def generate_exercise(model="claude", max_attempts=3):
+def generate_exercise(model="claude-haiku", max_attempts=3):
     """Генерирует новое упражнение с использованием выбранной модели LLM"""
     # Получаем активные темы
     active_topics = []
@@ -571,82 +583,124 @@ def generate_exercise(model="claude", max_attempts=3):
     # Делаем несколько попыток, чтобы получить новый глагол
     for attempt in range(max_attempts):
         verb_instruction = ""
-        if selected_verb:
-            verb_instruction = f'ВАЖНО: В этом задании ОБЯЗАТЕЛЬНО используй глагол "{selected_verb}".'
-        else:
-            verb_instruction = f"""
-            ВАЖНО: Используй разнообразные глаголы! Если возможно, НЕ используй следующие недавно использованные глаголы: {excluded_verbs}.
-            Выбери другой, менее распространенный глагол. Старайся использовать глаголы из разных семантических групп 
-            (движение, говорение, чувства, действия с предметами, мышление и т.д.).
-            """
         
-        prompt = f"""
-        Создай простое предложение на испанском языке (Castellano, Испания) для тренировки глагола в форме "{selected_option}".
-        
-        {verb_instruction}
-        
-        ВАЖНО: Убедись, что задание составлено так, чтобы вместо пропуска подходил лишь один верный вариант слова/фразы.
-        Добавь временные маркеры и другие элементы, чётко определяющие необходимость использования нужной видовременной формы.
-        
-        {special_instructions}
-        
-        Верни ответ строго в формате JSON:
-        {{
-            "sentence": "полное предложение на испанском",
-            "incomplete_sentence": "предложение с пропуском на месте целевого слова",
-            "verb_infinitive": "глагол в инфинитиве",
-            "tense": "{selected_option}",
-            "correct_form": "правильная форма слова, которая должна быть в пропуске",
-            "explanation": "краткое грамматическое объяснение на русском языке, почему используется эта форма",
-            "translation": "перевод полного предложения на русский язык",
-            "word_type": "тип пропущенного слова (глагол, местоимение, артикль, предлог и т.д.)",
-            "base_word": "базовая форма пропущенного слова (например, инфинитив для глаголов или именительный падеж для местоимений)",
-            "conjugation": {{
-        """
-        
-        # Добавляем инструкции по формированию спряжений в зависимости от выбранной формы
-        if selected_option == "Imperativo":
-            prompt += """
-                "tú": "форма императива для tú",
-                "usted": "форма императива для usted",
-                "vosotros": "форма императива для vosotros/as",
-                "ustedes": "форма императива для ustedes"
+        # Изменяем тип запроса в зависимости от выбранной темы
+        if "Pronombres" in selected_option:
+            # Для местоимений не используем глаголы из списка
+            selected_verb = None
+            verb_instruction = ""
+            prompt = f"""
+            Создай простое предложение на испанском языке (Castellano, Испания) для тренировки местоимений (притяжательных, указательных, личных и др.).
+            
+            ВАЖНО: Задание должно быть на правильное использование МЕСТОИМЕНИЯ, а НЕ глагола. Вместо пропуска должно подходить только одно правильное местоимение.
+            Добавь в предложение контекст, который чётко определяет необходимость использования конкретного местоимения.
+            
+            {special_instructions}
+            
+            Верни ответ строго в формате JSON:
+            {{
+                "sentence": "полное предложение на испанском",
+                "incomplete_sentence": "предложение с пропуском на месте местоимения",
+                "verb_infinitive": "основной глагол предложения в инфинитиве (для справки)",
+                "tense": "Pronombres (притяжательные и пр.)",
+                "correct_form": "правильная форма МЕСТОИМЕНИЯ, которая должна быть в пропуске",
+                "explanation": "краткое грамматическое объяснение НА РУССКОМ ЯЗЫКЕ, почему используется это местоимение",
+                "translation": "перевод полного предложения на русский язык",
+                "word_type": "местоимение",
+                "base_word": "базовая форма местоимения",
+                "conjugation": {{}}
             }}
-            """
-        elif selected_option in TENSES:
-            prompt += """
-                "yo": "форма для yo в данном времени",
-                "tú": "форма для tú в данном времени",
-                "él": "форма для él/ella/usted в данном времени",
-                "nosotros": "форма для nosotros/as в данном времени",
-                "vosotros": "форма для vosotros/as в данном времени",
-                "ellos": "форма для ellos/ellas/ustedes в данном времени"
-            }}
-            """
-        elif selected_option in FORMS:
-            # Для Participio и Gerundio нет спряжений, поэтому просто показываем форму
-            prompt += """
-                "form": "корректная форма (participio/gerundio)"
-            }}
+            
+            Типы местоимений, которые можно использовать:
+            1. Притяжательные (mi, tu, su, nuestro, vuestro, su)
+            2. Указательные (este, ese, aquel, esta, esa, aquella, etc.)
+            3. Личные (yo, tú, él, ella, nosotros, vosotros, ellos, ellas)
+            4. Возвратные (me, te, se, nos, os, se)
+            5. Вопросительные (qué, quién, cuál, etc.)
+            6. Неопределенные (alguien, algo, cualquiera, etc.)
+            7. Отрицательные (nada, nadie, ninguno, etc.)
+            
+            Убедись, что пропуск действительно требует указанного местоимения и подходит только одна форма.
+            Предложение должно быть простым и понятным для начинающих/продолжающих изучать испанский язык.
             """
         else:
-            # Для остальных случаев запрашиваем спряжение в настоящем времени
-            prompt += """
-                "yo": "форма для yo в Presente de Indicativo",
-                "tú": "форма для tú в Presente de Indicativo",
-                "él": "форма для él/ella/usted в Presente de Indicativo",
-                "nosotros": "форма для nosotros/as в Presente de Indicativo",
-                "vosotros": "форма для vosotros/as в Presente de Indicativo",
-                "ellos": "форма для ellos/ellas/ustedes в Presente de Indicativo"
-            }}
+            # Стандартный запрос для глаголов
+            if selected_verb:
+                verb_instruction = f'ВАЖНО: В этом задании ОБЯЗАТЕЛЬНО используй глагол "{selected_verb}".'
+            else:
+                verb_instruction = f"""
+                ВАЖНО: Используй разнообразные глаголы! Если возможно, НЕ используй следующие недавно использованные глаголы: {excluded_verbs}.
+                Выбери другой, менее распространенный глагол. Старайся использовать глаголы из разных семантических групп 
+                (движение, говорение, чувства, действия с предметами, мышление и т.д.).
+                """
+            
+            prompt = f"""
+            Создай простое предложение на испанском языке (Castellano, Испания) для тренировки глагола в форме "{selected_option}".
+            
+            {verb_instruction}
+            
+            ВАЖНО: Убедись, что задание составлено так, чтобы вместо пропуска подходил лишь один верный вариант слова/фразы.
+            Добавь временные маркеры и другие элементы, чётко определяющие необходимость использования нужной видовременной формы.
+            
+            {special_instructions}
+            
+            Верни ответ строго в формате JSON:
+            {{
+                "sentence": "полное предложение на испанском",
+                "incomplete_sentence": "предложение с пропуском на месте целевого слова",
+                "verb_infinitive": "глагол в инфинитиве",
+                "tense": "{selected_option}",
+                "correct_form": "правильная форма слова, которая должна быть в пропуске",
+                "explanation": "краткое грамматическое объяснение на русском языке, почему используется эта форма",
+                "translation": "перевод полного предложения на русский язык",
+                "word_type": "тип пропущенного слова (глагол, местоимение, артикль, предлог и т.д.)",
+                "base_word": "базовая форма пропущенного слова (например, инфинитив для глаголов или именительный падеж для местоимений)",
+                "conjugation": {{
             """
-        
-        prompt += f"""
-        }}
-        
-        Убедись, что пропуск действительно требует указанной формы глагола и подходит только одна форма.
-        Предложение должно быть простым и понятным для начинающих/продолжающих изучать испанский язык.
-        """
+            
+            # Добавляем инструкции по формированию спряжений в зависимости от выбранной формы
+            if selected_option == "Imperativo":
+                prompt += """
+                    "tú": "форма императива для tú",
+                    "usted": "форма императива для usted",
+                    "vosotros": "форма императива для vosotros/as",
+                    "ustedes": "форма императива для ustedes"
+                }}
+                """
+            elif selected_option in TENSES:
+                prompt += """
+                    "yo": "форма для yo в данном времени",
+                    "tú": "форма для tú в данном времени",
+                    "él": "форма для él/ella/usted в данном времени",
+                    "nosotros": "форма для nosotros/as в данном времени",
+                    "vosotros": "форма для vosotros/as в данном времени",
+                    "ellos": "форма для ellos/ellas/ustedes в данном времени"
+                }}
+                """
+            elif selected_option in FORMS:
+                # Для Participio и Gerundio нет спряжений, поэтому просто показываем форму
+                prompt += """
+                    "form": "корректная форма (participio/gerundio)"
+                }}
+                """
+            else:
+                # Для остальных случаев запрашиваем спряжение в настоящем времени
+                prompt += """
+                    "yo": "форма для yo в Presente de Indicativo",
+                    "tú": "форма для tú в Presente de Indicativo",
+                    "él": "форма для él/ella/usted в Presente de Indicativo",
+                    "nosotros": "форма для nosotros/as в Presente de Indicativo",
+                    "vosotros": "форма для vosotros/as в Presente de Indicativo",
+                    "ellos": "форма для ellos/ellas/ustedes в Presente de Indicativo"
+                }}
+                """
+            
+            prompt += f"""
+            }}
+            
+            Убедись, что пропуск действительно требует указанной формы глагола и подходит только одна форма.
+            Предложение должно быть простым и понятным для начинающих/продолжающих изучать испанский язык.
+            """
         
         response = get_llm_response(prompt, model)
         if response:
@@ -655,7 +709,96 @@ def generate_exercise(model="claude", max_attempts=3):
                 json_start = response.find('{')
                 json_end = response.rfind('}') + 1
                 json_str = response[json_start:json_end]
-                exercise = json.loads(json_str)
+                
+                # Создаем отладочную копию исходного JSON для отслеживания ошибок
+                original_json = json_str
+                
+                # Полная очистка и нормализация JSON
+                # 1. Замена одинарных кавычек на двойные
+                json_str = json_str.replace("'", '"')
+                
+                # 2. Исправление случаев, когда после закрывающей кавычки нет запятой перед следующим полем
+                json_str = json_str.replace('"\n', '",\n')
+                json_str = json_str.replace('"\r\n', '",\r\n')
+                
+                # 3. Исправление случая, когда после закрывающей кавычки нет запятой перед следующим полем (без переноса)
+                json_str = json_str.replace('" ', '", ')
+                
+                # 4. Исправление случаев неправильной вложенности JSON
+                json_str = json_str.replace('}}"', '}}')
+                json_str = json_str.replace('""', '"')
+                
+                # 5. Удаление возможных незакрытых кавычек в конце
+                if json_str.endswith('"'):
+                    if json_str[-2] != '}':
+                        json_str = json_str[:-1]
+                
+                # 6. Исправление проблем с запятыми в JSON объектах
+                # Убираем запятую перед закрывающей скобкой
+                json_str = re.sub(r',(\s*)}', r'\1}', json_str)
+                
+                # 7. Проверка на пропущенные запятые между значениями полей
+                # например: "field1": "value1" "field2": "value2"
+                json_str = re.sub(r'("(?:[^"\\]|\\.)*")\s+("(?:[^"\\]|\\.)*")', r'\1, \2', json_str)
+                
+                # Альтернативная проверка: если мы все еще не можем разобрать JSON, 
+                # попробуем регулярное выражение для извлечения нужных полей
+                try:
+                    exercise = json.loads(json_str)
+                except Exception as json_parse_error:
+                    # Отладочная информация
+                    # st.error(f"Не удалось разобрать JSON: {str(json_parse_error)}")
+                    # st.write("Оригинальный JSON:", original_json)
+                    # st.write("Исправленный JSON:", json_str)
+                    
+                    # Запасной вариант - использование регулярных выражений для извлечения ключевых полей
+                    try:
+                        # Извлекаем основные поля из ответа с помощью regex
+                        exercise = {}
+                        
+                        # Паттерны для извлечения основных полей
+                        patterns = {
+                            "sentence": r'"sentence"\s*:\s*"([^"]+)"',
+                            "incomplete_sentence": r'"incomplete_sentence"\s*:\s*"([^"]+)"',
+                            "verb_infinitive": r'"verb_infinitive"\s*:\s*"([^"]+)"',
+                            "tense": r'"tense"\s*:\s*"([^"]+)"',
+                            "correct_form": r'"correct_form"\s*:\s*"([^"]+)"',
+                            "explanation": r'"explanation"\s*:\s*"([^"]+)"',
+                            "translation": r'"translation"\s*:\s*"([^"]+)"',
+                            "word_type": r'"word_type"\s*:\s*"([^"]+)"',
+                            "base_word": r'"base_word"\s*:\s*"([^"]+)"'
+                        }
+                        
+                        for field, pattern in patterns.items():
+                            match = re.search(pattern, response)
+                            if match:
+                                exercise[field] = match.group(1)
+                            else:
+                                # Если поле не найдено, используем значения по умолчанию
+                                if field == "word_type":
+                                    exercise[field] = "глагол"
+                                elif field == "base_word" and "verb_infinitive" in exercise:
+                                    exercise[field] = exercise["verb_infinitive"]
+                                else:
+                                    exercise[field] = ""
+                        
+                        # Создаем пустой объект спряжения в качестве запасного варианта
+                        exercise["conjugation"] = {}
+                        
+                        # Проверяем, есть ли минимально необходимые поля
+                        required_fields = ["sentence", "incomplete_sentence", "verb_infinitive", "correct_form"]
+                        if all(field in exercise and exercise[field] for field in required_fields):
+                            # st.success("JSON был восстановлен с помощью регулярных выражений")
+                            pass
+                        else:
+                            raise Exception("Не удалось извлечь обязательные поля с помощью регулярных выражений")
+                            
+                    except Exception as regex_error:
+                        # Если даже регулярные выражения не помогли, возвращаем ошибку
+                        st.error(f"Не удалось извлечь данные из ответа: {str(regex_error)}")
+                        if attempt == max_attempts - 1:
+                            return None
+                        continue
                 
                 # Если глагол был выбран из списка, убедимся что он используется
                 if selected_verb and exercise['verb_infinitive'] != selected_verb:
@@ -767,16 +910,16 @@ if st.session_state.current_exercise:
     base_word = exercise.get('base_word', exercise['verb_infinitive'])
     
     # Формируем заголовок задания в зависимости от типа пропущенного слова
-    if word_type == "глагол":
+    if (word_type == "глагол" or word_type == "verbo" or word_type.lower() == "verb" or 
+        word_type == "глагол в нужной форме"):
         instruction_header = f"### Вставьте пропущенный глагол <span style='color:red; font-weight:700;'>{base_word.upper()}</span> в нужной форме"
-    elif word_type == "местоимение":
+    elif (word_type == "местоимение" or word_type == "pronombre" or 
+          word_type.lower() == "pronoun" or "Pronombres" in exercise.get('tense', '')):
+        # Для местоимений показываем только базовый заголовок без конкретных слов
         instruction_header = f"### Вставьте пропущенное местоимение"
-    elif word_type == "артикль":
-        instruction_header = f"### Вставьте пропущенный артикль"
-    elif word_type == "предлог":
-        instruction_header = f"### Вставьте пропущенный предлог"
     else:
-        instruction_header = f"### Вставьте пропущенное слово ({word_type})"
+        # Для всех остальных случаев используем глагол по умолчанию
+        instruction_header = f"### Вставьте пропущенный глагол <span style='color:red; font-weight:700;'>{base_word.upper()}</span> в нужной форме"
     
     # Отображаем заголовок задания
     st.markdown(instruction_header, unsafe_allow_html=True)
@@ -847,10 +990,20 @@ if st.session_state.current_exercise:
         **Форма:** {exercise['tense']}
         """)
         
-        # Отображаем таблицу спряжения с использованием HTML
+        # Проверяем, если объяснение на испанском, попробуем автоматически перевести его
+        explanation = exercise.get('explanation', '')
+        if explanation and any(word in explanation.lower() for word in ['se utiliza', 'porque', 'para', 'cuando', 'como', 'el pronombre']):
+            # Скорее всего, объяснение на испанском - добавим предупреждение
+            st.warning(f"**Примечание:** Объяснение может быть на испанском языке: {explanation}")
+            # Также можно было бы здесь добавить автоматический перевод, но это потребовало бы дополнительного API
+        
+        # Отображаем таблицу спряжения с использованием HTML только для глаголов
         try:
             conjugation = exercise.get('conjugation', {})
-            if conjugation:
+            # Проверяем, что это упражнение не на местоимения и есть данные для отображения
+            if ("Pronombres" not in exercise.get('tense', '') and 
+                word_type not in ["местоимение", "pronombre", "pronoun"] and
+                conjugation):
                 # Формируем заголовок таблицы в зависимости от времени/формы
                 if exercise['tense'] == "Imperativo":
                     table_title = f"Спряжение глагола {exercise['verb_infinitive']} (Imperativo):"
@@ -1041,9 +1194,15 @@ if st.session_state.show_settings:
     # Выбор LLM модели
     model_option = st.radio(
         "Выберите LLM модель:",
-        options=["claude", "gpt"],
-        index=0 if st.session_state.selected_model == "claude" else 1,
-        format_func=lambda x: "Claude 3 Opus" if x == "claude" else "GPT-4o",
+        options=["claude-haiku", "claude-3.7-sonnet", "claude-opus", "gpt-4o", "gpt-4o-mini"],
+        index=["claude-haiku", "claude-3.7-sonnet", "claude-opus", "gpt-4o", "gpt-4o-mini"].index(st.session_state.selected_model),
+        format_func=lambda x: {
+            "claude-haiku": "Claude 3 Haiku", 
+            "claude-3.7-sonnet": "Claude 3.7 Sonnet", 
+            "claude-opus": "Claude 3 Opus", 
+            "gpt-4o": "GPT-4o", 
+            "gpt-4o-mini": "GPT-4o mini"
+        }[x],
         horizontal=True
     )
     if model_option != st.session_state.selected_model:
