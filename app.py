@@ -486,12 +486,14 @@ def generate_exercise(model="claude", max_attempts=3):
         Верни ответ строго в формате JSON:
         {{
             "sentence": "полное предложение на испанском",
-            "incomplete_sentence": "предложение с пропуском на месте целевого глагола",
+            "incomplete_sentence": "предложение с пропуском на месте целевого слова",
             "verb_infinitive": "глагол в инфинитиве",
             "tense": "{selected_option}",
-            "correct_form": "правильная форма глагола, которая должна быть в пропуске",
+            "correct_form": "правильная форма слова, которая должна быть в пропуске",
             "explanation": "краткое грамматическое объяснение на русском языке, почему используется эта форма",
             "translation": "перевод полного предложения на русский язык",
+            "word_type": "тип пропущенного слова (глагол, местоимение, артикль, предлог и т.д.)",
+            "base_word": "базовая форма пропущенного слова (например, инфинитив для глаголов или именительный падеж для местоимений)",
             "conjugation": {{
         """
         
@@ -651,8 +653,24 @@ if not st.session_state.current_exercise or st.session_state.needs_new_exercise:
 if st.session_state.current_exercise:
     exercise = st.session_state.current_exercise
     
-    # Отображение инфинитива глагола (без объяснения в скобках)
-    st.markdown(f"### {exercise['verb_infinitive']}")
+    # Получаем информацию о типе пропущенного слова
+    word_type = exercise.get('word_type', 'глагол')
+    base_word = exercise.get('base_word', exercise['verb_infinitive'])
+    
+    # Формируем заголовок задания в зависимости от типа пропущенного слова
+    if word_type == "глагол":
+        instruction_header = f"### Вставьте пропущенный глагол {base_word.upper()} в нужной форме"
+    elif word_type == "местоимение":
+        instruction_header = f"### Вставьте пропущенное местоимение"
+    elif word_type == "артикль":
+        instruction_header = f"### Вставьте пропущенный артикль"
+    elif word_type == "предлог":
+        instruction_header = f"### Вставьте пропущенный предлог"
+    else:
+        instruction_header = f"### Вставьте пропущенное слово ({word_type})"
+    
+    # Отображаем заголовок задания
+    st.markdown(instruction_header)
     
     # Проверяем, был ли уже отправлен ответ
     if st.session_state.submitted:
