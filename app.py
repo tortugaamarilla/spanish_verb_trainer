@@ -493,13 +493,46 @@ def generate_exercise(model="claude", max_attempts=3):
             "explanation": "краткое грамматическое объяснение на русском языке, почему используется эта форма",
             "translation": "перевод полного предложения на русский язык",
             "conjugation": {{
-                "yo": "форма для yo",
-                "tu": "форма для tú",
-                "el": "форма для él/ella/usted",
-                "nosotros": "форма для nosotros/as",
-                "vosotros": "форма для vosotros/as",
-                "ellos": "форма для ellos/ellas/ustedes"
+        """
+        
+        # Добавляем инструкции по формированию спряжений в зависимости от выбранной формы
+        if selected_option == "Imperativo":
+            prompt += """
+                "tú": "форма императива для tú",
+                "usted": "форма императива для usted",
+                "vosotros": "форма императива для vosotros/as",
+                "ustedes": "форма императива для ustedes"
             }}
+            """
+        elif selected_option in TENSES:
+            prompt += """
+                "yo": "форма для yo в данном времени",
+                "tú": "форма для tú в данном времени",
+                "él": "форма для él/ella/usted в данном времени",
+                "nosotros": "форма для nosotros/as в данном времени",
+                "vosotros": "форма для vosotros/as в данном времени",
+                "ellos": "форма для ellos/ellas/ustedes в данном времени"
+            }}
+            """
+        elif selected_option in FORMS:
+            # Для Participio и Gerundio нет спряжений, поэтому просто показываем форму
+            prompt += """
+                "form": "корректная форма (participio/gerundio)"
+            }}
+            """
+        else:
+            # Для остальных случаев запрашиваем спряжение в настоящем времени
+            prompt += """
+                "yo": "форма для yo в Presente de Indicativo",
+                "tú": "форма для tú в Presente de Indicativo",
+                "él": "форма для él/ella/usted в Presente de Indicativo",
+                "nosotros": "форма для nosotros/as в Presente de Indicativo",
+                "vosotros": "форма для vosotros/as в Presente de Indicativo",
+                "ellos": "форма для ellos/ellas/ustedes в Presente de Indicativo"
+            }}
+            """
+        
+        prompt += f"""
         }}
         
         Убедись, что пропуск действительно требует указанной формы глагола и подходит только одна форма.
@@ -691,37 +724,78 @@ if st.session_state.current_exercise:
         try:
             conjugation = exercise.get('conjugation', {})
             if conjugation:
-                html_table = f"""
-                <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px;">
-                    <h4 style="margin-top: 0;">Спряжение глагола {exercise['verb_infinitive']} (Presente):</h4>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>yo</strong></td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('yo', '-')}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('tu', '-')}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>él/ella/usted</strong></td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('el', '-')}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>nosotros/as</strong></td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('nosotros', '-')}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('vosotros', '-')}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px;"><strong>ellos/ellas/ustedes</strong></td>
-                            <td style="padding: 8px;">{conjugation.get('ellos', '-')}</td>
-                        </tr>
-                    </table>
-                </div>
-                """
+                # Формируем заголовок таблицы в зависимости от времени/формы
+                if exercise['tense'] == "Imperativo":
+                    table_title = f"Спряжение глагола {exercise['verb_infinitive']} (Imperativo):"
+                    
+                    html_table = f"""
+                    <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                        <h4 style="margin-top: 0;">{table_title}</h4>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('tú', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>usted</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('usted', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('vosotros', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px;"><strong>ustedes</strong></td>
+                                <td style="padding: 8px;">{conjugation.get('ustedes', '-')}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    """
+                elif exercise['tense'] in FORMS:
+                    if 'form' in conjugation:
+                        html_table = f"""
+                        <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                            <h4 style="margin-top: 0;">Форма глагола {exercise['verb_infinitive']} ({exercise['tense']}):</h4>
+                            <p style="font-size: 16px; padding: 8px;">{conjugation.get('form', '-')}</p>
+                        </div>
+                        """
+                    else:
+                        html_table = ""
+                else:
+                    table_title = f"Спряжение глагола {exercise['verb_infinitive']} ({exercise['tense']}):"
+                    
+                    html_table = f"""
+                    <div style="padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">
+                        <h4 style="margin-top: 0;">{table_title}</h4>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>yo</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('yo', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>tú</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('tú', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>él/ella/usted</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('él', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>nosotros/as</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('nosotros', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{conjugation.get('vosotros', '-')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px;"><strong>ellos/ellas/ustedes</strong></td>
+                                <td style="padding: 8px;">{conjugation.get('ellos', '-')}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    """
+                
                 st.markdown(html_table, unsafe_allow_html=True)
             else:
                 # Запасной вариант, если нет данных о спряжении в новом формате
