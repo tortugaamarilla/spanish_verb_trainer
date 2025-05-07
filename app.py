@@ -931,6 +931,18 @@ def check_answer(user_input, correct_answer):
     user_norm = normalize_spanish_text(user_input.strip().lower())
     correct_norm = normalize_spanish_text(correct_answer.strip().lower())
     
+    # Если правильный ответ содержит запятые, разбиваем его на части
+    if ',' in correct_norm:
+        correct_parts = [part.strip() for part in correct_norm.split(',')]
+        user_parts = [part.strip() for part in user_norm.split(',')]
+        
+        # Проверяем, что количество частей совпадает
+        if len(correct_parts) != len(user_parts):
+            return False
+            
+        # Проверяем каждую часть
+        return all(correct_parts[i] == user_parts[i] for i in range(len(correct_parts)))
+    
     return user_norm == correct_norm
 
 def generate_audio(text, voice_id):
@@ -1075,7 +1087,15 @@ if st.session_state.current_exercise:
         if st.session_state.correct:
             st.success("✅ Правильно!")
         else:
-            st.error(f"❌ Неправильно. Верный ответ: **{exercise['correct_form']}**")
+            # Форматируем правильный ответ для отображения
+            correct_form = exercise['correct_form']
+            if ',' in correct_form:
+                # Если ответ содержит запятые, заключаем каждую часть в кавычки
+                formatted_answer = ', '.join([f'"{part.strip()}"' for part in correct_form.split(',')])
+            else:
+                formatted_answer = correct_form
+                
+            st.error(f"❌ Неправильно. Верный ответ: {formatted_answer}")
             st.info(f"**Объяснение:** {exercise['explanation']}")
     
     # Отображение перевода и дополнительной информации
@@ -1548,15 +1568,15 @@ if st.session_state.show_settings:
     
     with col_tenses1:
         # Добавляем кнопку выбора всех галочек в первый столбец
-        select_all = st.checkbox("Выбрать все", value=True, key="select_all")
+        select_all = st.checkbox("Выбрать все", value=all(st.session_state.selected_topics.values()), key="select_all")
         
-        # Обновляем состояние всех чекбоксов при изменении select_all
-        if select_all:
+        # Обновляем состояние всех чекбоксов только при изменении select_all
+        if 'select_all_prev' not in st.session_state:
+            st.session_state.select_all_prev = select_all
+        elif st.session_state.select_all_prev != select_all:
+            st.session_state.select_all_prev = select_all
             for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
-                st.session_state.selected_topics[tense] = True
-        else:
-            for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
-                st.session_state.selected_topics[tense] = False
+                st.session_state.selected_topics[tense] = select_all
         
         # Распределяем чекбоксы поровну между колонками
         for tense in TENSES[:len(TENSES)//2]:
