@@ -1096,9 +1096,16 @@ if st.session_state.current_exercise:
         st.session_state.show_translation = True
     
     if st.session_state.show_translation:
+        # Проверяем, если перевод на испанском, попробуем автоматически перевести его
+        translation = exercise.get('translation', '')
+        if translation and any(word in translation.lower() for word in ['se utiliza', 'porque', 'para', 'cuando', 'como', 'el pronombre', 'es', 'son', 'está', 'están']):
+            # Скорее всего, перевод на испанском - используем оригинальное предложение
+            translation = exercise.get('sentence', '')
+            st.warning("**Примечание:** Перевод был на испанском языке, показываем оригинальное предложение.")
+        
         # Отображаем перевод и форму
         st.info(f"""
-        **Перевод:** {exercise['translation']}
+        **Перевод:** {translation}
         
         **Форма:** {exercise['tense']}
         """)
