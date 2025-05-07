@@ -1000,6 +1000,9 @@ def next_exercise_callback():
     st.session_state.needs_new_exercise = True
     # Очищаем поле ввода при переходе к новому заданию
     st.session_state.user_answer = ""
+    # Принудительно очищаем значение поля ввода
+    if 'answer_input' in st.session_state:
+        del st.session_state.answer_input
 
 # Генерация упражнения при первом запуске или флаге needs_new_exercise
 if not st.session_state.current_exercise or st.session_state.needs_new_exercise:
