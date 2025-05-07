@@ -1166,12 +1166,12 @@ if st.session_state.current_exercise:
                                 <td style="padding: 8px; border-bottom: 1px solid #ddd;">{tu_form}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>usted</strong></td>
-                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{usted_form}</td>
-                            </tr>
-                            <tr>
                                 <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
                                 <td style="padding: 8px; border-bottom: 1px solid #ddd;">{vosotros_form}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>usted</strong></td>
+                                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{usted_form}</td>
                             </tr>
                             <tr>
                                 <td style="padding: 8px;"><strong>ustedes</strong></td>
@@ -1453,12 +1453,12 @@ if st.session_state.current_exercise:
                                         <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('tú', '-')}</td>
                                     </tr>
                                     <tr>
-                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>usted</strong></td>
-                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('él', '-')}</td>
-                                    </tr>
-                                    <tr>
                                         <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>vosotros/as</strong></td>
                                         <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('vosotros', '-')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>usted</strong></td>
+                                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{forms.get('él', '-')}</td>
                                     </tr>
                                     <tr>
                                         <td style="padding: 8px;"><strong>ustedes</strong></td>
