@@ -1090,18 +1090,26 @@ if st.session_state.current_exercise:
                 
             st.error(f"❌ Неправильно. Верный ответ: {formatted_answer}")
             st.info(f"**Объяснение:** {exercise['explanation']}")
+        
+        # Добавляем кнопку "Далее" после проверки ответа
+        st.button("Далее", on_click=next_exercise_callback, use_container_width=True)
     
     # Отображение перевода и дополнительной информации
     if translate_button:
         st.session_state.show_translation = True
     
     if st.session_state.show_translation:
-        # Проверяем, если перевод на испанском, попробуем автоматически перевести его
-        translation = exercise.get('translation', '')
-        if translation and any(word in translation.lower() for word in ['se utiliza', 'porque', 'para', 'cuando', 'como', 'el pronombre', 'es', 'son', 'está', 'están']):
-            # Скорее всего, перевод на испанском - используем оригинальное предложение
-            translation = exercise.get('sentence', '')
-            st.warning("**Примечание:** Перевод был на испанском языке, показываем оригинальное предложение.")
+        # Всегда получаем перевод оригинального предложения
+        original_sentence = exercise.get('sentence', '')
+        translation_prompt = f"""
+        Переведи следующее предложение с испанского на русский язык:
+        {original_sentence}
+        
+        Верни только перевод, без дополнительных пояснений.
+        """
+        translation = get_llm_response(translation_prompt, st.session_state.selected_model)
+        if not translation:
+            translation = original_sentence  # Если не удалось получить перевод, используем оригинал
         
         # Отображаем перевод и форму
         st.info(f"""
@@ -1110,12 +1118,10 @@ if st.session_state.current_exercise:
         **Форма:** {exercise['tense']}
         """)
         
-        # Проверяем, если объяснение на испанском, попробуем автоматически перевести его
+        # Проверяем, если объяснение на испанском, используем пустую строку
         explanation = exercise.get('explanation', '')
         if explanation and any(word in explanation.lower() for word in ['se utiliza', 'porque', 'para', 'cuando', 'como', 'el pronombre']):
-            # Скорее всего, объяснение на испанском - добавим предупреждение
-            st.warning(f"**Примечание:** Объяснение может быть на испанском языке: {explanation}")
-            # Также можно было бы здесь добавить автоматический перевод, но это потребовало бы дополнительного API
+            explanation = ""
         
         # Отображаем таблицу спряжения с использованием HTML только для глаголов
         try:
@@ -1504,49 +1510,6 @@ if st.session_state.current_exercise:
                 st.markdown(html_table, unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Ошибка при отображении спряжений: {str(e)}")
-    
-    # Кнопки "Озвучить" и "Далее"
-    col3, col4 = st.columns(2)
-    
-    with col3:
-        if st.session_state.submitted:
-            # Показываем кнопку озвучивания
-            audio_button = st.button(
-                "🔊 Озвучить",
-                use_container_width=True
-            )
-            
-            # Генерируем аудио только при нажатии на кнопку
-            if audio_button:
-                with st.spinner("Подготовка аудио..."):
-                    try:
-                        # Генерируем аудио при нажатии на кнопку
-                        sentence_to_speak = exercise['sentence']
-                        audio_data = generate_audio(
-                            sentence_to_speak,
-                            st.session_state.voice_id
-                        )
-                        if audio_data:
-                            # Сохраняем для возможного повторного использования
-                            st.session_state.audio_data = audio_data
-                            st.session_state.audio_ready = True
-                            # Отображаем аудио с автовоспроизведением
-                            autoplay_audio(audio_data)
-                        else:
-                            st.error("Не удалось сгенерировать аудио.")
-                    except Exception as e:
-                        st.error(f"Ошибка при генерации аудио: {str(e)}")
-            
-            # Если аудио уже было сгенерировано, показываем его без автовоспроизведения
-            elif st.session_state.audio_ready and st.session_state.audio_data:
-                st.audio(st.session_state.audio_data, format="audio/mpeg")
-
-        with col4:
-            next_button = st.button(
-                "Далее ➡️",
-                use_container_width=True,
-                on_click=next_exercise_callback
-            )
 
 # Обработка случая, когда упражнение не загружено
 else:
