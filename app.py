@@ -1035,7 +1035,7 @@ if st.session_state.current_exercise:
     
     # Поле ввода ответа
     user_input = st.text_input(
-        "Введите пропущенное слово:",
+        "Введите пропущенное слово (если слов несколько - через запятую):",
         value="" if st.session_state.needs_new_exercise else st.session_state.user_answer,
         key="answer_input",
         disabled=st.session_state.submitted
@@ -1105,7 +1105,8 @@ if st.session_state.current_exercise:
             
             # Проверяем, что это упражнение не на местоимения 
             if ("Pronombres" not in exercise.get('tense', '') and 
-                word_type not in ["местоимение", "pronombre", "pronoun"]):
+                word_type not in ["местоимение", "pronombre", "pronoun"] and
+                exercise['tense'] not in ["Participio", "Gerundio", "Paráfrasis"]):  # Добавляем Paráfrasis в список исключений
                 
                 # Формируем заголовок таблицы в зависимости от времени/формы
                 if exercise['tense'] == "Imperativo":
@@ -1545,56 +1546,57 @@ if st.session_state.show_settings:
     # Времена (Tenses)
     col_tenses1, col_tenses2 = st.columns(2)
     
-    # Добавляем кнопку выбора всех галочек
-    select_all = st.checkbox("Выбрать все", value=True, key="select_all")
-    
-    # Обновляем состояние всех чекбоксов при изменении select_all
-    if select_all:
-        for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
-            st.session_state.selected_topics[tense] = True
-    else:
-        for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
-            st.session_state.selected_topics[tense] = False
-    
     with col_tenses1:
-        for tense in TENSES[:len(TENSES)//2 + len(TENSES)%2]:
+        # Добавляем кнопку выбора всех галочек в первый столбец
+        select_all = st.checkbox("Выбрать все", value=True, key="select_all")
+        
+        # Обновляем состояние всех чекбоксов при изменении select_all
+        if select_all:
+            for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
+                st.session_state.selected_topics[tense] = True
+        else:
+            for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
+                st.session_state.selected_topics[tense] = False
+        
+        # Распределяем чекбоксы поровну между колонками
+        for tense in TENSES[:len(TENSES)//2]:
             st.session_state.selected_topics[tense] = st.checkbox(
                 tense, 
                 value=st.session_state.selected_topics.get(tense, True),
                 key=f"check_{tense}"
             )
-    with col_tenses2:
-        for tense in TENSES[len(TENSES)//2 + len(TENSES)%2:]:
-            st.session_state.selected_topics[tense] = st.checkbox(
-                tense, 
-                value=st.session_state.selected_topics.get(tense, True),
-                key=f"check_{tense}"
-            )
-    
-    # Формы (Forms)
-    col_forms1, col_forms2 = st.columns(2)
-    with col_forms1:
+        
+        # Добавляем половину форм в первый столбец
         st.session_state.selected_topics['Participio'] = st.checkbox(
             'Participio',
             value=st.session_state.selected_topics.get('Participio', True),
             key="check_Participio"
         )
-    with col_forms2:
-        st.session_state.selected_topics['Gerundio'] = st.checkbox(
-            'Gerundio',
-            value=st.session_state.selected_topics.get('Gerundio', True),
-            key="check_Gerundio"
-        )
-    
-    # Другое
-    col_other1, col_other2 = st.columns(2)
-    with col_other1:
+        
+        # Добавляем половину других элементов в первый столбец
         st.session_state.selected_topics['Pronombres'] = st.checkbox(
             'Pronombres (местоимения)',
             value=st.session_state.selected_topics.get('Pronombres', True),
             key="check_Pronouns"
         )
-    with col_other2:
+    
+    with col_tenses2:
+        # Вторая половина времен
+        for tense in TENSES[len(TENSES)//2:]:
+            st.session_state.selected_topics[tense] = st.checkbox(
+                tense, 
+                value=st.session_state.selected_topics.get(tense, True),
+                key=f"check_{tense}"
+            )
+        
+        # Добавляем вторую половину форм во второй столбец
+        st.session_state.selected_topics['Gerundio'] = st.checkbox(
+            'Gerundio',
+            value=st.session_state.selected_topics.get('Gerundio', True),
+            key="check_Gerundio"
+        )
+        
+        # Добавляем вторую половину других элементов во второй столбец
         st.session_state.selected_topics['Paráfrasis'] = st.checkbox(
             'Paráfrasis (конструкции)',
             value=st.session_state.selected_topics.get('Paráfrasis', True),
