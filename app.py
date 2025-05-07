@@ -663,6 +663,10 @@ def generate_exercise(model="claude-haiku", max_attempts=3):
             
             {special_instructions}
             
+            КРИТИЧЕСКИ ВАЖНО:
+            1. Объяснение (explanation) должно быть ТОЛЬКО на русском языке
+            2. Перевод (translation) должен быть ТОЛЬКО на русский язык
+            
             Верни ответ строго в формате JSON:
             {{
                 "sentence": "полное предложение на испанском",
@@ -1540,6 +1544,18 @@ if st.session_state.show_settings:
     
     # Времена (Tenses)
     col_tenses1, col_tenses2 = st.columns(2)
+    
+    # Добавляем кнопку выбора всех галочек
+    select_all = st.checkbox("Выбрать все", value=True, key="select_all")
+    
+    # Обновляем состояние всех чекбоксов при изменении select_all
+    if select_all:
+        for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
+            st.session_state.selected_topics[tense] = True
+    else:
+        for tense in TENSES + FORMS + ['Pronombres', 'Paráfrasis']:
+            st.session_state.selected_topics[tense] = False
+    
     with col_tenses1:
         for tense in TENSES[:len(TENSES)//2 + len(TENSES)%2]:
             st.session_state.selected_topics[tense] = st.checkbox(
