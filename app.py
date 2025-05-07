@@ -371,22 +371,6 @@ def get_llm_response(prompt, model="claude-haiku"):
             return response.content[0].text
         elif model.startswith("gpt"):
             try:
-                # Самый простой способ инициализации OpenAI с минимумом параметров
-                client = openai.OpenAI(api_key=openai_api_key)
-                model_name = "gpt-4o" if model == "gpt-4o" else "gpt-4o-mini"
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": "Ты - помощник для тренировки испанских глаголов."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.2,
-                    max_tokens=1000
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                # Альтернативный метод, если основной не сработал
-                st.error(f"Пробуем альтернативный метод для GPT после ошибки: {str(e)}")
                 # Используем legacy метод без создания клиента
                 openai.api_key = openai_api_key
                 model_name = "gpt-4o" if model == "gpt-4o" else "gpt-4o-mini"
@@ -400,6 +384,9 @@ def get_llm_response(prompt, model="claude-haiku"):
                     max_tokens=1000
                 )
                 return response.choices[0].message.content
+            except Exception as e:
+                st.error(f"Ошибка при обращении к API: {str(e)}")
+                return None
     except Exception as e:
         st.error(f"Ошибка при обращении к API: {str(e)}")
         return None
@@ -666,6 +653,9 @@ def generate_exercise(model="claude-haiku", max_attempts=3):
             КРИТИЧЕСКИ ВАЖНО:
             1. Объяснение (explanation) должно быть ТОЛЬКО на русском языке
             2. Перевод (translation) должен быть ТОЛЬКО на русский язык
+            3. НИКОГДА не оставляй испанский текст в полях explanation и translation
+            4. ВСЕ объяснения и переводы должны быть на русском языке
+            5. Если ты не уверен в переводе, используй более простой вариант на русском языке
             
             Верни ответ строго в формате JSON:
             {{
